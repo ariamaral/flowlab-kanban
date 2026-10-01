@@ -1,0 +1,1941 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FlowLab — Simulador Kanban v8.1</title>
+<meta name="author" content="Prof. Ari Amaral"/>
+<meta name="description" content="FlowLab — simulador de gestão de fluxo Kanban. Jogo criado por Prof. Ari Amaral."/>
+<!-- FlowLab v8.1 — ranks recalibrados, eficiencia de fluxo corrigida, violacao de WIP corrigida, banca recalibrada, localStorage protegido -->
+<style>
+:root{
+  --bg:#07111f;--panel:#0f1d31;--panel2:#13243c;--ink:#eaf2ff;--muted:#8fa6c6;
+  --accent:#ffd166;--good:#3ddc97;--warn:#ff9f43;--bad:#ff5d73;--blue:#4dabf7;--violet:#b197fc;
+  --line:#243b5a;--card:#ffffff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#07111f,#0b1627);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+.app{min-height:100vh}
+.topbar{position:sticky;top:0;z-index:30;background:rgba(7,17,31,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{font-weight:900;font-size:22px;letter-spacing:-.5px}.brand b{color:var(--accent)}
+.pill{background:#11233b;border:1px solid #243b5a;border-radius:999px;padding:6px 10px;font-size:12px}
+.pill strong{color:#fff}
+.primary{background:var(--accent);color:#111827;border:none;border-radius:10px;padding:10px 16px;font-weight:900}
+.ghost{background:#12233b;color:#dbeafe;border:1px solid #2d4668;border-radius:9px;padding:8px 12px}
+.danger{background:#ef476f;color:#fff;border:none;border-radius:9px;padding:8px 12px}
+.container{padding:14px}
+.hero{max-width:1080px;margin:28px auto;padding:28px;border:1px solid #274264;background:linear-gradient(135deg,#0e2037,#132b49);border-radius:24px;box-shadow:0 30px 70px rgba(0,0,0,.3)}
+.hero h1{font-size:48px;line-height:1.02;margin:0 0 12px}.hero h1 span{color:var(--accent)}
+.hero p{color:#b9c9e0;line-height:1.7}
+.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.panel h3,.panel h4{margin:0 0 8px}
+label{display:block;font-size:12px;color:#9fb0c9;margin:9px 0 4px}
+input,select{width:100%;background:#091627;color:#eef6ff;border:1px solid #314b70;border-radius:9px;padding:10px}
+.kpis{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.kpi{background:#0d1c30;border:1px solid #243b5a;border-radius:12px;padding:8px 10px;min-width:110px}
+.kpi small{display:block;color:#8ea6c5;font-size:10px}.kpi b{font-size:18px}
+.board-wrap{overflow-x:auto;padding-bottom:8px}
+.board{display:flex;gap:8px;min-width:1750px}
+.col{width:150px;flex:0 0 150px;background:#0d1b2d;border:1px solid #28415f;border-radius:14px;min-height:430px}
+.col.over{outline:3px solid var(--bad)}
+.col-head{padding:9px;border-bottom:1px dashed #355273;min-height:86px}
+.group{font-size:9px;letter-spacing:.9px;text-transform:uppercase;color:#8da8cb}
+.col-title{font-size:12px;font-weight:800;line-height:1.25;margin-top:4px}
+.wipctl{display:flex;align-items:center;gap:5px;margin-top:7px}
+.mini{width:22px;height:22px;border:1px solid #375477;background:#13253e;color:#dbeafe;border-radius:6px}
+.count{font-size:11px;font-weight:800}
+.card-list{padding:7px;display:flex;flex-direction:column;gap:7px}
+.work{background:#fff;color:#172033;border-radius:9px;padding:8px;border-left:7px solid #64748b;box-shadow:0 4px 12px rgba(0,0,0,.2);font-size:11px;transition:.15s;cursor:pointer}
+.work:hover{transform:translateY(-2px)}
+.work h5{margin:0 0 4px;font-size:12px;line-height:1.2}
+.tags{display:flex;gap:4px;flex-wrap:wrap}.tag{font-size:9px;background:#e9eef5;border-radius:5px;padding:2px 4px}
+.work.blocked{outline:2px dashed #e03131}
+/* --- drag & drop --- */
+.work{touch-action:pan-x pan-y}
+.work.is-source{opacity:.35;filter:grayscale(.5)}
+.drag-ghost{position:fixed;z-index:9999;pointer-events:none;width:136px;transform:translate(-50%,-50%) rotate(2.5deg) scale(1.04);box-shadow:0 18px 40px rgba(0,0,0,.55);opacity:.96}
+.col.drop-ok{outline:3px solid var(--good);background:#0f2a24}
+.col.drop-ok .col-head{background:rgba(61,220,151,.12)}
+.col.drop-no{outline:3px solid var(--bad);background:#2a1420}
+.dragging-active{user-select:none;-webkit-user-select:none}
+.dragging-active .board-wrap{touch-action:none}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:10000;background:#12233b;color:#eaf2ff;border:1px solid #2d4668;border-left:6px solid var(--accent);border-radius:12px;padding:12px 16px;font-size:13px;max-width:92vw;box-shadow:0 14px 40px rgba(0,0,0,.5);animation:toastIn .18s ease-out}
+.toast.bad{border-left-color:var(--bad)}.toast.good{border-left-color:var(--good)}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.credit{font-size:12px;color:#8fa6c6;margin:-4px 0 12px;letter-spacing:.02em}
+.credit b{color:#cfe0f5;font-weight:700}
+.brand .by{display:block;font-size:9.5px;font-weight:600;color:#8fa6c6;letter-spacing:.02em;margin-top:-2px}
+.cinfo{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;margin-left:5px;border-radius:50%;background:#ffffff2e;border:1px solid #ffffff45;color:#fff;font-size:10px;font-weight:800;cursor:pointer;vertical-align:middle;touch-action:manipulation}
+.cinfo:hover{background:#ffffff5c}
+ul.crit{margin:0;padding-left:18px}
+ul.crit li{font-size:12.5px;line-height:1.6;margin-bottom:4px;color:#dbeafe}
+.critrow ul.crit li{color:#334155}
+.critrow{border:1px solid #e2e8f0;border-left-width:4px;border-left-color:#cbd5e1;border-radius:9px;padding:10px 12px;margin-bottom:8px;background:#fff}
+.critrow.is-q{border-left-color:#16a34a;background:#f7fdfa}
+.crith{font-size:13px;color:#0f172a;margin-bottom:6px}
+.critr{display:block;font-size:11px;color:#64748b;font-weight:600;margin-top:2px}
+.critn{font-size:11.5px;color:#475569;background:#f4f8fc;border-radius:7px;padding:7px 9px;margin-top:7px;line-height:1.5}
+.cvverdict{border-radius:9px;padding:10px 12px;font-size:13px;line-height:1.5}
+.cv-good{background:#e6f7ee;border:1px solid #86e0b0;color:#14532d}
+.cv-warn{background:#fff4e0;border:1px solid #f0cf8e;color:#7c4a03}
+.cv-bad{background:#fdecef;border:1px solid #f3a8b5;color:#7f1d1d}
+.hired{background:#f4f8fc;border:1px solid #dbe6f2;border-radius:9px;padding:9px 11px;font-size:12px;color:#334155;line-height:1.6}
+.cands{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px}
+.cand{border:1px solid #d8e1ed;border-radius:11px;padding:12px;background:#fbfdff}
+.cand-h{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.cand-h b{font-size:14px;color:#0f172a;display:block}
+.cand-h small{font-size:11px;color:#64748b}
+.cand-p{margin-left:auto;text-align:right;font-size:13px;font-weight:800;color:#0f172a}
+.cand-p small{display:block;font-size:10px;font-weight:600;color:#64748b}
+.cand-b{font-size:12px;color:#475569;line-height:1.5;margin-bottom:6px}
+.cand-s{font-size:11.5px;color:#334155;margin-bottom:6px}
+.cand-r{font-size:11.5px;background:#eef4fd;border-radius:7px;padding:7px 9px;color:#1e3a5f;line-height:1.5;margin-bottom:8px}
+.cand-c{font-size:11px;color:#64748b;margin-bottom:9px}
+.cand button{width:100%}
+.banca{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;margin-bottom:16px}
+.expert2{border:1px solid #d8e1ed;border-left-width:5px;border-radius:11px;padding:12px 14px;background:#fbfdff}
+.expert2.ex-good{border-left-color:#16a34a}.expert2.ex-warn{border-left-color:#f59f00}.expert2.ex-bad{border-left-color:#e03131}
+.ex-h{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.ex-ic{font-size:22px;line-height:1}
+.ex-h b{font-size:14px;color:#0f172a;display:block}
+.ex-h small{font-size:11px;color:#64748b}
+.ex-tag{margin-left:auto;font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;background:#eef3f9;color:#475569;white-space:nowrap}
+.ex-good .ex-tag{background:#e6f7ee;color:#15803d}.ex-warn .ex-tag{background:#fff4e0;color:#b45309}.ex-bad .ex-tag{background:#fdecef;color:#b91c1c}
+.ex-v{font-size:11.5px;font-family:ui-monospace,monospace;color:#334155;background:#f1f6fb;border-radius:7px;padding:6px 9px;margin-bottom:8px;line-height:1.5}
+.ex-d{font-size:12.5px;line-height:1.6;color:#334155;margin-bottom:9px}
+.ex-t,.ex-c{font-size:12.5px;line-height:1.6;border-radius:8px;padding:8px 10px;margin-top:7px}
+.ex-t{background:#fff8e6;border:1px solid #f0dcae;color:#5c4708}
+.ex-c{background:#eef4fd;border:1px solid #cfdff5;color:#1e3a5f}
+.ex-t small,.ex-c small{display:block;font-size:9.5px;font-weight:800;letter-spacing:.08em;margin-bottom:3px;opacity:.75}
+.trilha{border:1px solid #d8e1ed;border-radius:12px;padding:14px;background:#f7fbff;margin-bottom:14px}
+.trilha h4{margin:0 0 10px;font-size:14px;color:#0f172a}
+.tr-i{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #e6edf6}
+.tr-i:last-child{border-bottom:0}
+.tr-n{flex:0 0 22px;height:22px;border-radius:50%;background:#2563eb;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.tr-i b{font-size:12.5px;color:#0f172a;display:block}
+.tr-i span{font-size:11.5px;color:#475569;line-height:1.5}
+.refs{border:1px solid #d8e1ed;border-radius:12px;padding:14px;background:#fbfdff}
+.refs h4{margin:0 0 8px;font-size:14px;color:#0f172a}
+.ref-i{padding:6px 0;border-bottom:1px solid #eef3f9;font-size:12px}
+.ref-i:last-child{border-bottom:0}
+.ref-i b{color:#0f172a}
+.ref-a{color:#2563eb;margin-left:6px}
+.ref-s{display:block;color:#64748b;font-size:11px;margin-top:2px}
+.clegend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.cl-item{display:inline-flex;align-items:center;gap:5px;background:#0d1b2d;border:1px solid #28415f;border-radius:999px;padding:3px 10px 3px 4px;font-size:11px;color:#dbeafe}
+.cl-item i{width:12px;height:12px;border-radius:50%;display:inline-block;flex:0 0 12px}
+.cl-w{background:#5b1220;color:#ff9aa8;border-radius:4px;padding:1px 5px;font-size:9.5px;font-weight:800;letter-spacing:.03em}
+.cl-more{font-size:10.5px;color:#7f95b3;margin-left:2px}
+.cltable{display:flex;flex-direction:column;gap:8px}
+.clrow{border:1px solid #d8e1ed;border-left-width:5px;border-radius:9px;padding:9px 12px;background:#fbfdff}
+.clh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;color:#0f172a}
+.cldot{width:11px;height:11px;border-radius:50%;display:inline-block}
+.clcount{margin-left:auto;font-size:11px;color:#64748b}
+.clb{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px}
+.clb span{font-size:11.5px;line-height:1.5;color:#334155}
+.clb small{display:block;font-size:9.5px;letter-spacing:.07em;color:#94a3b8;font-weight:800;margin-bottom:2px}
+.hint{font-size:11px;color:#8fa6c6;padding:0 2px 6px}
+/* --- detalhe do cartão --- */
+.info{float:right;cursor:pointer;font-size:12px;line-height:1;padding:5px 6px;margin:-4px -4px 0 4px;border-radius:7px;background:#ffffff1a;border:1px solid #ffffff2e;color:#fff;opacity:.85;min-width:26px;min-height:26px;display:inline-flex;align-items:center;justify-content:center;touch-action:manipulation}
+.info:hover,.info:active{opacity:1;background:#ffffff33}
+.tag-val{background:#1c3b2e;color:#3ddc97;border-color:#2b6b50}
+.tag-bv{background:#13314a;color:#7cc4ff;border-color:#2a5a80;font-weight:800}
+.tag-tech{background:#2b2438;color:#c4b5fd;border-color:#4c3f66}
+.steps{margin:0;padding-left:20px}.steps li{font-size:12.5px;line-height:1.6;color:#dbeafe;margin-bottom:3px}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cmp>div{border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.5}
+.cmp small{display:block;font-size:9.5px;letter-spacing:.08em;margin-bottom:4px;opacity:.85}
+.cmp-ok{background:#122e22;border:1px solid #2b6b50;color:#c9f2e0}
+.cmp-no{background:#341820;border:1px solid #7a3040;color:#ffd6dd}
+.bv{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.bv>div{background:#12233b;border:1px solid #2d4668;border-radius:8px;padding:8px 10px}
+.bv small{display:block;font-size:9.5px;color:#8fa6c6;letter-spacing:.05em;margin-bottom:3px}
+.bv b{font-size:17px}
+.tag-dep{background:#3a2d15;color:#f59f00;border-color:#6b5324}
+.dialog.detail{max-width:640px;width:94vw;max-height:88vh;display:flex;flex-direction:column;padding:0;background:#0f1e33;border:1px solid #2d4668}
+.dhead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #22364f;position:sticky;top:0;background:#0f1e33;border-radius:12px 12px 0 0}
+.dhead h3{margin:6px 0 0;font-size:17px;color:#eaf2ff}
+.dclose{background:#1b2f4a;border:1px solid #2d4668;color:#cfe0f5;border-radius:8px;width:30px;height:30px;font-size:14px;cursor:pointer;flex:0 0 30px}
+.dbody{overflow-y:auto;padding:4px 16px 18px;-webkit-overflow-scrolling:touch}
+.dbody section{padding:12px 0;border-bottom:1px solid #1c2e46}
+.dbody section:last-child{border-bottom:0}
+.dbody h6{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8fa6c6}
+.dbody p{margin:0;font-size:13px;line-height:1.5;color:#dbeafe}
+.dbody ul{margin:0;padding-left:18px}.dbody li{font-size:12.5px;line-height:1.5;color:#dbeafe;margin-bottom:3px}
+.dtab{width:100%;border-collapse:collapse;font-size:12.5px}
+.dtab td{padding:5px 0;border-bottom:1px solid #17293f;color:#cfe0f5}
+.dtab td:last-child{text-align:right;white-space:nowrap}
+.dbody .good{color:#3ddc97}.dbody .bad{color:#ff6b81}.dbody .muted{color:#7f95b3}
+.dialog.daily{max-width:720px}
+.dfoot{padding:12px 16px;border-top:1px solid #22364f;text-align:right;background:#0f1e33;border-radius:0 0 12px 12px}
+.alert{display:block;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12.5px;line-height:1.5}
+.alert b{display:block;margin-bottom:2px}
+.alert.d-bad{background:#341820;border-left:4px solid #ff6b81;color:#ffd6dd}
+.alert.d-warn{background:#33290f;border-left:4px solid #f59f00;color:#ffe9b8}
+.dcol{border:1px solid #1e3350;border-radius:9px;padding:8px 10px;margin-bottom:8px;background:#0c1a2c}
+.dcol-h{font-size:12px;font-weight:800;color:#cfe0f5;margin-bottom:6px;padding-bottom:5px;border-bottom:1px dashed #24395a}
+.ditem{padding:5px 0;border-bottom:1px solid #16273c}
+.ditem:last-of-type{border-bottom:0}
+.ditem-n{font-size:12.5px;color:#eaf2ff;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ditem-f{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;font-size:11px}
+.d-bad{color:#ff6b81}.d-warn{color:#f59f00}.d-good{color:#3ddc97}.d-muted{color:#8fa6c6}
+.dq{margin-top:7px;font-size:12px;color:#7cc4ff;background:#12233b;border-radius:7px;padding:6px 9px;line-height:1.5}
+.matbar{border-radius:8px;padding:7px 10px;font-size:12px;font-weight:700}
+.mat0{background:#33290f;color:#f59f00;border:1px solid #6b5324}
+.mat1{background:#13314a;color:#7cc4ff;border:1px solid #2a5a80}
+.mat2{background:#122e22;color:#3ddc97;border:1px solid #2b6b50}
+.note{display:block;margin-top:8px;font-size:11px;color:#8fa6c6;line-height:1.5}
+/* --- história de usuário e BDD --- */
+.story{background:#132540;border-left:4px solid #4c8dff;border-radius:0 8px 8px 0;padding:10px 12px;font-size:13px;line-height:1.7;color:#eaf2ff}
+.skw{color:#4c8dff;font-weight:800}
+.scen{background:#0c1a2c;border:1px solid #1e3350;border-radius:8px;padding:9px 11px;margin-bottom:8px}
+.scen:last-child{margin-bottom:0}
+.scen-t{font-size:12px;font-weight:800;color:#cfe0f5;margin-bottom:6px;padding-bottom:5px;border-bottom:1px dashed #24395a}
+.step{font-size:12.5px;line-height:1.6;color:#dbeafe;padding:1px 0}
+.kw{display:inline-block;min-width:52px;font-weight:800;font-size:11px}
+.kw-d{color:#4c8dff}.kw-q{color:#f59f00}.kw-e{color:#3ddc97}.kw-a{color:#7f95b3}
+/* --- bancada de pessoas --- */
+.tray{display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#0d1b2d;border:1px solid #28415f;border-radius:12px;padding:8px;margin-bottom:8px}
+.tray-label{font-size:11px;font-weight:800;color:#8fa6c6;margin-right:4px}
+.chip{display:flex;align-items:center;gap:6px;background:#12233b;border:1px solid #2d4668;border-radius:999px;padding:4px 10px 4px 4px;font-size:11px;color:#dbeafe;cursor:grab;touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none}
+.chip .face-sm{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:11px;flex:0 0 22px}
+.chip small{color:#8fa6c6;font-size:10px}
+.chip.absent{opacity:.45;cursor:not-allowed}
+.chip.is-source{opacity:.35}
+.chip.assigned{border-color:#3ddc97}
+.chip.waiting{border-color:#f59f00;background:#2a2113}
+.chip.waiting small{color:#f59f00}
+.work.drop-ok{outline:3px solid var(--good);transform:scale(1.03)}
+.work.drop-no{outline:3px solid var(--bad)}
+.tray.drop-ok{outline:2px dashed var(--good)}
+.drag-ghost.chip{width:auto;transform:translate(-50%,-50%) scale(1.08)}
+.people{display:flex;gap:3px;margin-top:5px}.avatar{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;cursor:grab;touch-action:pan-x pan-y}
+.avatar:hover{outline:2px solid #fff;outline-offset:1px}
+.drag-ghost.avatar{width:34px;height:34px;font-size:16px;border:2px solid #fff}
+.avatar.is-source{opacity:.3}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.tab{background:#112238;border:1px solid #294566;color:#b9cae1;padding:7px 12px;border-radius:8px;font-weight:700}
+.tab.active{background:#fff;color:#0d1b2d}
+.tabview{background:#fff;color:#152033;border-radius:16px;padding:14px;min-height:250px}
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.member{border:1px solid #dce4ee;border-radius:12px;padding:10px;display:flex;gap:9px}
+.member .face{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900}
+.member small{color:#64748b}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+.chart{border:1px solid #d8e1ed;border-radius:12px;padding:10px;background:#fbfdff}
+.chart h4{margin:0;font-size:13px;color:#0f172a}.chart p{font-size:11px;color:#64748b;margin:4px 0 8px;line-height:1.45}
+.chart svg.cx{width:100%;height:auto;display:block}
+.nodata{padding:26px 10px;text-align:center;color:#94a3b8;font-size:12px;background:#f4f8fc;border-radius:8px}
+.charts{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+svg{width:100%;height:240px;background:#fff}
+.health{display:grid;gap:9px}
+.diag{border-left:6px solid #94a3b8;border-radius:10px;background:#f6f8fb;padding:10px}
+.diag.good{border-color:#20c997}.diag.warn{border-color:#ff922b}.diag.bad{border-color:#fa5252}
+.diag b{display:block;margin-bottom:3px}
+.modal{position:fixed;inset:0;background:rgba(2,8,20,.82);z-index:80;display:flex;align-items:center;justify-content:center;padding:16px}
+.dialog{max-width:760px;width:100%;background:#fff;color:#132033;border-radius:18px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.speech{display:flex;gap:12px;align-items:flex-start}
+.speech .portrait{width:74px;height:74px;border-radius:50%;background:#13243c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:38px;border:4px solid #ffd166}
+.bubble{background:#eef4fb;border-radius:5px 18px 18px 18px;padding:14px;flex:1;line-height:1.55}
+.choice{display:block;width:100%;text-align:left;margin-top:8px;border:1px solid #cfd8e6;background:#fff;border-radius:10px;padding:10px}
+.choice:hover{background:#f3f7fb}
+.scorebox{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.scorecard{background:#0d1c30;color:#fff;border-radius:12px;padding:12px}
+.ranktable{width:100%;border-collapse:collapse;font-size:12px}
+.ranktable th,.ranktable td{padding:7px;border-bottom:1px solid #dde4ee;text-align:left}
+.timeline{max-height:330px;overflow:auto}.log{padding:6px 0;border-bottom:1px dashed #dce4ee;font-size:12px}
+.final{max-width:1050px;margin:20px auto}
+.expert{display:flex;gap:10px;margin:10px 0}.expert .portrait{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#14263e;color:#fff;font-size:26px}
+.expert .talk{flex:1;background:#15263e;color:#eaf2ff;border-radius:4px 14px 14px 14px;padding:10px}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}.hero h1{font-size:34px}.topbar{position:static}}
+</style>
+</head>
+<body>
+<div id="app" class="app"><div class="hero"><div class="brand">FLOW<b>LAB</b></div><h1>Carregando o simulador...</h1><p>Se esta mensagem permanecer, abra o arquivo no Chrome, Edge ou Firefox.</p></div></div>
+<script>
+window.onerror=function(msg,src,line,col){var a=document.getElementById("app");if(a){a.innerHTML='<div class="hero"><div class="brand">FLOW<b>LAB</b></div><h1>Não foi possível iniciar</h1><p>Erro: '+String(msg)+' (linha '+line+')</p><p>Abra este arquivo no Chrome ou Edge atualizado.</p></div>';}};
+const DAYS=30, TEAM_COST=8, BILLING=3, SUB_REVENUE=1.4;
+const columns=[
+ {id:'backlog',name:'Backlog',group:'Upstream',type:'queue'},
+ {id:'refine',name:'Refinamento de Negócio',group:'Upstream',type:'active',stage:'refine'},
+ {id:'readyPlan',name:'Pronto para Refinamento Técnico',group:'Upstream',type:'queue'},
+ {id:'plan',name:'Refinamento Técnico',group:'Upstream',type:'active',stage:'plan'},
+ {id:'readyDev',name:'Pronto para Desenvolvimento ★',group:'Downstream',type:'queue'},
+ {id:'dev',name:'Em Desenvolvimento',group:'Downstream',type:'active',stage:'dev'},
+ {id:'readyTest',name:'Pronto para Teste',group:'Downstream',type:'queue'},
+ {id:'test',name:'Em Teste',group:'Downstream',type:'active',stage:'test'},
+ {id:'readyHml',name:'Pronto para Homologação',group:'Downstream',type:'queue'},
+ {id:'hml',name:'Em Homologação',group:'Downstream',type:'active',stage:'hml'},
+ {id:'prod',name:'Produção 🚀',group:'Downstream',type:'done'}
+];
+const order=columns.map(x=>x.id), col=id=>columns.find(x=>x.id===id), next=id=>order[order.indexOf(id)+1];
+const people=[
+ {id:'ana',custo:1.2,desde:0,name:'Ana',role:'Product Analyst',spec:['refine','plan','hml'],color:'#7c3aed',bio:'Transforma necessidades vagas em opções claras.'},
+ {id:'bia',custo:1.4,desde:0,name:'Bia',role:'Product Owner',spec:['refine','plan'],color:'#8b5cf6',bio:'Prioriza valor, risco e custo de atraso.'},
+ {id:'caio',custo:1.3,desde:0,name:'Caio',role:'Dev Fullstack',spec:['plan','dev'],color:'#0369a1',bio:'Generalista técnico e bom em pareamento.'},
+ {id:'dora',custo:1.3,desde:0,name:'Dora',role:'Dev Backend',spec:['plan','dev'],color:'#0284c7',bio:'Cuida de integrações e arquitetura.'},
+ {id:'enzo',custo:0.8,desde:0,name:'Enzo',role:'Dev Júnior',spec:['dev'],color:'#0ea5e9',bio:'Aprende rápido e ajuda em qualquer etapa.'},
+ {id:'fabi',custo:1.1,desde:0,name:'Fabi',role:'QA Automação',spec:['refine','test','hml'],color:'#b45309',bio:'Automação, testes e qualidade no fluxo.'},
+ {id:'gui',custo:1.0,desde:0,name:'Gui',role:'QA Exploratório',spec:['refine','test','hml'],color:'#d97706',bio:'Encontra riscos invisíveis e apoia homologação.'}
+];
+// FONTE ÚNICA das classes de serviço: cor, política e expectativa.
+// Quadro, gráficos e legenda leem daqui — nenhuma cor é redefinida em outro lugar.
+const service={
+ standard:{label:'Padrão',class:'standard',icon:'⭐',cor:'#f2c94c',fundo:'#fff9db',
+  politica:'Respeita os limites de WIP e segue a ordem de puxada. É o fluxo normal do sistema.',
+  expectativa:'Entrega dentro do SLE acordado.',
+  valor:'Assinantes recorrentes — quanto mais cedo entrega, mais ciclos de cobrança alcança.'},
+ expedite:{label:'Expedite',class:'expedite',icon:'⚡',cor:'#e03131',fundo:'#fff0f0',
+  politica:'ATRAVESSA os limites de WIP e entra direto em Pronto para Desenvolvimento, sem passar pelos refinamentos.',
+  expectativa:'Lead time máximo de 5 dias — fora disso, o bônus é perdido.',
+  valor:'7 a 12 assinantes + bônus de 55k se cumprir o prazo. O custo real aparece no atraso dos outros itens.'},
+ fixed:{label:'Data fixa',class:'fixed',icon:'📅',cor:'#f08c00',fundo:'#fff4e6',
+  politica:'Compromisso com data. Antecipar não gera valor extra; atrasar gera multa.',
+  expectativa:'Entregue até a data indicada no cartão.',
+  valor:'4 a 8 assinantes + bônus de 35k dentro do prazo, ou multa de 20k fora dele.'},
+ debt:{label:'Débito técnico',class:'debt',icon:'🧹',cor:'#1971c2',fundo:'#e7f5ff',
+  politica:'Respeita os limites de WIP. Compete por capacidade com itens que geram receita.',
+  expectativa:'Sem prazo, mas adiar aumenta a frequência de bugs.',
+  valor:'Zero receita. Reduz o débito em 2 pontos — cada ponto custa 4% da produtividade em Dev e eleva a chance diária de novo bug.'},
+ bug:{label:'Bug',class:'bug',icon:'🐞',cor:'#d6336c',fundo:'#fff0f6',
+  politica:'ATRAVESSA os limites de WIP e entra direto no downstream. Não é uma decisão de ninguém: emerge sozinho do débito acumulado.',
+  expectativa:'Correção o quanto antes — já há cliente afetado.',
+  valor:'Zero receita. É o preço já pago pelo débito técnico, cobrado na capacidade de hoje.'}
+};
+const specs={
+ 'Checkout PIX':{
+  story:{como:'cliente com pressa para fechar a compra',quero:'pagar via PIX por QR Code ou copia-e-cola',para:'concluir o pedido em segundos, sem digitar dados de cartão'},
+  cenarios:[
+   {t:'Pagamento compensado com sucesso',p:[['Dado','que o cliente selecionou PIX no checkout'],['E','que o QR Code foi gerado há menos de 15 minutos'],['Quando','o PSP confirmar a compensação'],['Então','o pedido deve ser confirmado em até 30 segundos'],['E','o comprovante deve ser enviado por e-mail']]},
+   {t:'QR Code expirado',p:[['Dado','que o QR Code foi gerado há mais de 15 minutos'],['Quando','o cliente tentar pagar'],['Então','o sistema deve oferecer a geração de um novo código'],['E','o carrinho não deve ser descartado']]}
+  ],risco:'Integração com PSP externo — depende da janela de homologação do parceiro.'},
+ 'Login biométrico':{
+  story:{como:'usuário recorrente do aplicativo',quero:'entrar com biometria em vez de digitar senha',para:'acessar minha conta com rapidez sem abrir mão da segurança'},
+  cenarios:[
+   {t:'Acesso por biometria',p:[['Dado','que o usuário habilitou a biometria'],['Quando','ele abrir o aplicativo e autenticar pelo sensor'],['Então','o acesso deve ser liberado sem solicitar senha'],['E','a chave privada não deve sair do dispositivo']]},
+   {t:'Sensor indisponível',p:[['Dado','que o sensor biométrico falhou três vezes'],['Quando','o usuário tentar autenticar novamente'],['Então','o sistema deve oferecer o acesso por senha'],['E','deve registrar a tentativa no log de segurança']]}
+  ],risco:'Fragmentação de sensores no ecossistema Android.'},
+ 'Dashboard comercial':{
+  story:{como:'gerente comercial responsável por uma regional',quero:'ver receita, funil e ranking de vendedores em um só painel',para:'identificar desvios da meta antes do fechamento do mês'},
+  cenarios:[
+   {t:'Consulta com filtro por período',p:[['Dado','que existem 12 meses de histórico carregados'],['Quando','o gerente filtrar por trimestre e regional'],['Então','o painel deve responder em menos de 3 segundos'],['E','os totais devem bater com o relatório contábil']]},
+   {t:'Exportação dos dados',p:[['Dado','que um filtro está aplicado'],['Quando','o gerente solicitar a exportação'],['Então','o arquivo CSV deve refletir exatamente o filtro em tela']]}
+  ],risco:'Consulta pesada — pode exigir materialização das tabelas.'},
+ 'Busca inteligente':{
+  story:{como:'visitante que não conhece o nome exato do produto',quero:'encontrar itens mesmo digitando errado ou usando sinônimos',para:'chegar ao que procuro sem precisar navegar por categorias'},
+  cenarios:[
+   {t:'Tolerância a erro de digitação',p:[['Dado','que o catálogo contém o produto "cafeteira"'],['Quando','o visitante buscar por "cafeteria"'],['Então','o produto correto deve aparecer entre os primeiros resultados'],['E','a resposta deve levar menos de 400ms']]},
+   {t:'Busca sem resultado',p:[['Dado','que nenhum produto corresponde ao termo'],['Quando','a busca for executada'],['Então','o termo deve ser registrado para curadoria'],['E','sugestões alternativas devem ser exibidas']]}
+  ],risco:'Qualidade depende de curadoria contínua dos sinônimos.'},
+ 'Programa de pontos':{
+  story:{como:'cliente frequente da loja',quero:'acumular e resgatar pontos a cada compra',para:'ser recompensado por continuar comprando aqui'},
+  cenarios:[
+   {t:'Acúmulo após compra',p:[['Dado','que o cliente concluiu uma compra elegível'],['Quando','o pagamento for confirmado'],['Então','os pontos devem ser creditados no extrato'],['E','a origem do crédito deve ficar identificada']]},
+   {t:'Resgate acima do saldo',p:[['Dado','que o cliente possui 100 pontos'],['Quando','ele tentar resgatar um prêmio de 150 pontos'],['Então','o resgate deve ser recusado'],['E','o saldo não pode ficar negativo']]}
+  ],risco:'Regras de expiração ainda em definição pelo marketing.'},
+ 'Notificações push':{
+  story:{como:'usuário do aplicativo',quero:'escolher que tipos de notificação recebo e em quais horários',para:'ser avisado do que me interessa sem ser incomodado de madrugada'},
+  cenarios:[
+   {t:'Respeito ao horário de silêncio',p:[['Dado','que o usuário definiu silêncio entre 22h e 8h'],['Quando','uma campanha for disparada às 23h'],['Então','a notificação deve ser retida até as 8h']]},
+   {t:'Opt-out por categoria',p:[['Dado','que o usuário desativou a categoria "promoções"'],['Quando','uma campanha promocional for enviada'],['Então','o usuário não deve recebê-la'],['E','deve continuar recebendo avisos transacionais']]}
+  ],risco:'Aprovação nas lojas de aplicativos pode atrasar a publicação.'},
+ 'Exportar relatórios':{
+  story:{como:'analista que precisa levar dados para uma reunião',quero:'exportar relatórios em CSV e PDF sem travar a tela',para:'seguir trabalhando enquanto o arquivo é preparado'},
+  cenarios:[
+   {t:'Exportação assíncrona',p:[['Dado','que o relatório contém mais de 100 mil linhas'],['Quando','o analista solicitar a exportação'],['Então','o processamento deve ocorrer em fila'],['E','um e-mail com o link deve ser enviado ao concluir']]},
+   {t:'Expiração do link',p:[['Dado','que o link foi gerado há mais de 24 horas'],['Quando','alguém tentar acessá-lo'],['Então','o acesso deve ser negado']]}
+  ],risco:'Volume alto pode saturar a fila de processamento.'},
+ 'Cadastro simplificado':{
+  story:{como:'novo visitante avaliando o serviço',quero:'me cadastrar informando o mínimo possível',para:'experimentar o produto sem preencher um formulário longo'},
+  cenarios:[
+   {t:'Cadastro em três campos',p:[['Dado','que o visitante está na tela de cadastro'],['Quando','ele informar nome, e-mail e senha'],['Então','a conta deve ser criada em menos de 60 segundos'],['E','a validação deve ocorrer por link mágico no e-mail']]},
+   {t:'Complemento posterior do perfil',p:[['Dado','que a conta foi criada com dados mínimos'],['Quando','o usuário acessar uma função que exija CPF'],['Então','o sistema deve solicitar apenas o dado faltante']]}
+  ],risco:'Menos dados no funil pode enfraquecer a régua de CRM.'},
+ 'Rastreio de pedido':{
+  story:{como:'cliente aguardando uma entrega',quero:'acompanhar onde está meu pedido e quando chega',para:'me organizar para recebê-lo sem precisar ligar no suporte'},
+  cenarios:[
+   {t:'Atualização da linha do tempo',p:[['Dado','que a transportadora registrou um novo evento'],['Quando','o cliente abrir o rastreio'],['Então','a linha do tempo deve refletir o evento mais recente']]},
+   {t:'Mudança na previsão de entrega',p:[['Dado','que a previsão de entrega mudou'],['Quando','a alteração for recebida'],['Então','o cliente deve ser notificado proativamente']]}
+  ],risco:'Depende de API de terceiros com SLA instável.'},
+ 'Pagamento recorrente':{
+  story:{como:'assinante do serviço',quero:'que a cobrança aconteça automaticamente todo mês',para:'não perder o acesso por esquecimento de pagamento'},
+  cenarios:[
+   {t:'Retentativa após falha',p:[['Dado','que a cobrança falhou por saldo insuficiente'],['Quando','o ciclo de retentativa for executado'],['Então','devem ocorrer até 3 tentativas escalonadas'],['E','o assinante deve ser avisado a cada uma']]},
+   {t:'Cancelamento pelo assinante',p:[['Dado','que o assinante deseja cancelar'],['Quando','ele acionar o cancelamento'],['Então','a operação deve se concluir em um clique'],['E','nenhuma cobrança futura pode ser gerada']]}
+  ],risco:'Regras antifraude podem barrar retentativas legítimas.'},
+ 'Chat de suporte':{
+  story:{como:'cliente com um problema urgente',quero:'falar com o suporte em tempo real',para:'resolver minha questão sem abrir um chamado e esperar dias'},
+  cenarios:[
+   {t:'Atendimento com fila',p:[['Dado','que todos os atendentes estão ocupados'],['Quando','o cliente iniciar uma conversa'],['Então','sua posição na fila deve ser exibida e atualizada']]},
+   {t:'Transferência para humano',p:[['Dado','que o atendimento começou com o assistente automático'],['Quando','o cliente solicitar um atendente'],['Então','o histórico completo deve ser transferido junto']]}
+  ],risco:'Exige dimensionamento da equipe de atendimento.'},
+ 'Recomendações IA':{
+  story:{como:'cliente navegando pela loja',quero:'ver sugestões de produtos que combinam comigo',para:'descobrir itens relevantes sem precisar procurar'},
+  cenarios:[
+   {t:'Recomendação personalizada',p:[['Dado','que o cliente possui histórico de compras'],['Quando','ele acessar a home'],['Então','as sugestões devem excluir itens já comprados'],['E','o motivo da sugestão deve ser exibido']]},
+   {t:'Cliente sem histórico',p:[['Dado','que o cliente acessa pela primeira vez'],['Quando','a home for carregada'],['Então','o sistema deve exibir os produtos mais vendidos']]}
+  ],risco:'Precisa de volume de dados para ter desempenho aceitável.'},
+ 'Carrinho compartilhado':{
+  story:{como:'pessoa comprando junto com a família',quero:'compartilhar meu carrinho por link',para:'que todos escolham seus itens antes de fechar um pedido único'},
+  cenarios:[
+   {t:'Compartilhamento com permissão',p:[['Dado','que o dono gerou um link de edição'],['Quando','outra pessoa abrir o link'],['Então','ela deve conseguir adicionar itens ao mesmo carrinho']]},
+   {t:'Edição simultânea',p:[['Dado','que duas pessoas editam o carrinho ao mesmo tempo'],['Quando','ambas alterarem a quantidade do mesmo item'],['Então','o conflito deve ser resolvido sem perder alterações']]}
+  ],risco:'Concorrência de escrita no mesmo agregado.'},
+ 'Cupons dinâmicos':{
+  story:{como:'analista de marketing',quero:'criar cupons por regra e segmento com limite de uso',para:'rodar campanhas sem depender do time de tecnologia'},
+  cenarios:[
+   {t:'Limite de uso por cliente',p:[['Dado','que o cupom permite um uso por CPF'],['Quando','o mesmo CPF tentar usá-lo pela segunda vez'],['Então','o cupom deve ser recusado']]},
+   {t:'Acúmulo com outra promoção',p:[['Dado','que já existe um desconto aplicado ao carrinho'],['Quando','o cliente inserir um cupom'],['Então','o sistema deve aplicar apenas o benefício mais vantajoso'],['E','o uso deve ficar auditável']]}
+  ],risco:'Risco financeiro relevante se a regra vazar publicamente.'},
+ 'Central de ajuda':{
+  story:{como:'cliente com uma dúvida simples',quero:'pesquisar a resposta em uma base de artigos',para:'me resolver sozinho sem abrir um chamado'},
+  cenarios:[
+   {t:'Busca por artigo',p:[['Dado','que existe um artigo sobre troca de produto'],['Quando','o cliente buscar por "quero trocar"'],['Então','o artigo deve aparecer entre os primeiros resultados']]},
+   {t:'Avaliação de utilidade',p:[['Dado','que o cliente leu um artigo'],['Quando','ele votar como não útil'],['Então','o artigo deve entrar na fila de revisão de conteúdo']]}
+  ],risco:'Conteúdo desatualizado aumenta o volume de chamados.'},
+ 'Assinatura premium':{
+  story:{como:'cliente que usa o produto com frequência',quero:'assinar um plano pago com benefícios exclusivos',para:'ter mais valor de quem já uso todo dia'},
+  cenarios:[
+   {t:'Upgrade no meio do ciclo',p:[['Dado','que o cliente está no plano gratuito'],['Quando','ele contratar o plano premium'],['Então','a cobrança deve ser proporcional aos dias restantes'],['E','os benefícios devem ser ativados imediatamente']]},
+   {t:'Downgrade de plano',p:[['Dado','que o cliente é assinante premium'],['Quando','ele solicitar o downgrade'],['Então','a mudança deve valer apenas no fim do ciclo vigente']]}
+  ],risco:'Pode canibalizar a base do plano gratuito.'}
+};
+// ===== Defeitos: formato de relatório de bug (descrição, reprodução, esperado × obtido, severidade, impacto) =====
+const bugSpecs=[
+ {kind:'bug',titulo:'Duplicidade de cobrança na retentativa',
+  desc:'Quando a primeira tentativa de cobrança falha por timeout do PSP, a retentativa automática gera um segundo lançamento, e o cliente é cobrado duas vezes pelo mesmo pedido.',
+  ambiente:'Produção · API de pagamentos v2.14 · afeta todos os canais',
+  passos:['Iniciar uma compra com cartão de crédito','Forçar timeout na resposta do PSP (>30s)','Aguardar o ciclo automático de retentativa','Consultar os lançamentos do cliente na fatura'],
+  esperado:'Um único lançamento por pedido, com a retentativa reaproveitando o identificador de idempotência.',
+  obtido:'Dois lançamentos distintos com o mesmo valor e pedido de origem.',
+  severidade:'S1 — Crítica',
+  impacto:'Impacto financeiro direto e risco reputacional. Estorno manual pelo atendimento, com custo operacional por ocorrência.'},
+ {kind:'bug',titulo:'Sessão encerrada ao trocar de aba',
+  desc:'Usuários autenticados são desconectados ao alternar entre abas do navegador, perdendo o carrinho e o preenchimento em andamento.',
+  ambiente:'Produção · Web · Chrome e Edge · não reproduz no Safari',
+  passos:['Autenticar-se na aplicação','Adicionar itens ao carrinho','Abrir outra aba do mesmo domínio','Retornar à aba original e interagir'],
+  esperado:'Sessão preservada entre abas do mesmo domínio.',
+  obtido:'Redirecionamento para a tela de login e carrinho vazio.',
+  severidade:'S2 — Alta',
+  impacto:'Abandono de carrinho e aumento de chamados no suporte. Afeta a etapa final do funil, onde a perda é mais cara.'},
+ {kind:'bug',titulo:'Relatório exporta período incorreto',
+  desc:'A exportação ignora o filtro de data aplicado em tela e devolve sempre os últimos 30 dias.',
+  ambiente:'Produção · módulo de relatórios · todos os perfis',
+  passos:['Acessar o painel de relatórios','Aplicar filtro de período personalizado','Solicitar a exportação em CSV','Abrir o arquivo gerado'],
+  esperado:'Arquivo contendo exatamente o período filtrado.',
+  obtido:'Arquivo com os últimos 30 dias, independentemente do filtro.',
+  severidade:'S2 — Alta',
+  impacto:'Decisões tomadas sobre dados errados. Já houve divergência com o fechamento contábil.'},
+ {kind:'bug',titulo:'Estoque negativo em compra simultânea',
+  desc:'Duas compras concorrentes do último item disponível são ambas confirmadas, levando o estoque a valor negativo.',
+  ambiente:'Produção · serviço de catálogo · maior incidência em campanhas',
+  passos:['Deixar um produto com estoque igual a 1','Disparar duas confirmações de pedido simultâneas','Consultar o saldo do produto'],
+  esperado:'Apenas uma compra confirmada; a segunda recebe aviso de indisponibilidade.',
+  obtido:'Ambas confirmadas e estoque em −1.',
+  severidade:'S1 — Crítica',
+  impacto:'Promessa de entrega que não pode ser cumprida. Cancelamento posterior e desgaste com o cliente.'},
+ {kind:'bug',titulo:'Notificação enviada em duplicidade',
+  desc:'O disparo de campanha reprocessa a fila em caso de falha parcial e reenvia a mensagem a quem já havia recebido.',
+  ambiente:'Produção · serviço de notificações · push e e-mail',
+  passos:['Disparar campanha para um segmento grande','Provocar falha parcial no envio','Observar o reprocessamento automático'],
+  esperado:'Reenvio apenas aos destinatários que não receberam.',
+  obtido:'Reenvio para toda a base do segmento.',
+  severidade:'S3 — Média',
+  impacto:'Aumento de descadastros e risco de bloqueio por provedores de e-mail.'}
+];
+// ===== Infraestrutura e débito técnico: descritivo, motivação, escopo, impacto e critério de conclusão =====
+const techSpecs={
+ 'Refatorar pagamentos':{kind:'tech',atributo:'Manutenibilidade · Confiabilidade (ISO/IEC 25010)',
+  desc:'O módulo de pagamentos concentra regras de negócio, integração com o PSP e persistência na mesma camada, sem fronteiras claras.',
+  motivacao:'Toda alteração de regra exige tocar no código de integração, o que eleva o risco de incidente a cada entrega.',
+  escopo:['Separar a camada de domínio da camada de integração','Isolar o cliente do PSP atrás de uma interface','Cobrir as regras de negócio com testes de unidade'],
+  impacto:'Sem esta ação, o tempo de correção de defeitos continua alto e cada mudança carrega risco desproporcional ao seu tamanho.',
+  dod:['Nenhuma regressão funcional','Cobertura das regras críticas acima do patamar acordado','Rollback possível sem migração de dados']},
+ 'Automatizar pipeline':{kind:'tech',atributo:'Eficiência de desempenho · Manutenibilidade',
+  desc:'A publicação em produção depende de etapas manuais executadas por uma única pessoa, sem trilha de auditoria.',
+  motivacao:'A dependência de pessoa específica cria gargalo e ponto único de falha; o erro humano já causou indisponibilidade.',
+  escopo:['Automatizar build, testes e publicação','Implantar verificação automática de qualidade','Registrar trilha de auditoria de cada publicação'],
+  impacto:'Enquanto for manual, o lead time de correção emergencial permanece refém de disponibilidade individual.',
+  dod:['Publicação reproduzível sem intervenção manual','Rollback automatizado','Trilha de auditoria completa']},
+ 'Atualizar framework':{kind:'tech',atributo:'Segurança · Compatibilidade',
+  desc:'A aplicação roda sobre versão de framework fora do período de suporte, sem recebimento de correções de segurança.',
+  motivacao:'Vulnerabilidades conhecidas deixam de ser corrigidas pelo fornecedor. Requisito recorrente em auditoria.',
+  escopo:['Elevar o framework à versão suportada','Adequar as dependências incompatíveis','Executar regressão nos fluxos críticos'],
+  impacto:'Exposição a vulnerabilidades públicas e risco de apontamento em auditoria de segurança.',
+  dod:['Versão dentro do período de suporte','Nenhuma dependência com vulnerabilidade crítica','Fluxos críticos validados']},
+ 'Cobertura de testes do core':{kind:'tech',atributo:'Confiabilidade · Testabilidade',
+  desc:'O núcleo de regras de negócio possui cobertura de testes insuficiente, e defeitos são descobertos apenas em produção.',
+  motivacao:'O custo de correção cresce conforme o defeito avança no fluxo; hoje ele é descoberto no ponto mais caro.',
+  escopo:['Mapear as regras críticas sem cobertura','Escrever testes para os caminhos principais e de exceção','Integrar a verificação ao pipeline'],
+  impacto:'Sem cobertura, cada entrega no núcleo é uma aposta e o retrabalho consome capacidade do time.',
+  dod:['Regras críticas cobertas','Testes executados a cada publicação','Falha no teste bloqueia a publicação']},
+ 'Reduzir acoplamento da API':{kind:'tech',atributo:'Manutenibilidade · Portabilidade',
+  desc:'Os serviços consumidores dependem de detalhes internos da API, e qualquer mudança de contrato provoca falha em cascata.',
+  motivacao:'Mudanças simples exigem coordenação entre várias equipes, o que gera espera e trabalho parado em fila.',
+  escopo:['Publicar contrato versionado','Introduzir camada anticorrupção nos consumidores','Definir política de descontinuação'],
+  impacto:'O acoplamento transforma mudanças pequenas em coordenação cara, elevando o tempo de espera no fluxo.',
+  dod:['Contrato versionado publicado','Consumidores migrados','Política de descontinuação acordada']}
+};
+const genericSpec={
+ expedite:{
+  story:{como:'executivo responsável por um cliente estratégico',quero:'que esta demanda seja tratada com prioridade máxima',para:'preservar um contrato relevante para a receita'},
+  cenarios:[
+   {t:'Entrega dentro da janela de bônus',p:[['Dado','que o item foi classificado como expedite'],['Quando','for entregue em até 5 dias de lead time'],['Então','o bônus financeiro deve ser reconhecido']]},
+   {t:'Impacto no restante do fluxo',p:[['Dado','que o expedite atravessa os limites de WIP'],['Quando','ele consumir a capacidade do time'],['Então','o atraso causado aos demais itens deve ser explicitado']]}
+  ],risco:'Toda urgência atrasa todo o resto — o custo real não aparece neste cartão, aparece no lead time dos outros.'},
+ fixed:{
+  story:{como:'responsável pelo cumprimento regulatório',quero:'que esta obrigação seja entregue até a data determinada',para:'evitar multa e exposição da empresa junto ao regulador'},
+  cenarios:[
+   {t:'Entrega dentro do prazo',p:[['Dado','que a data limite ainda não foi atingida'],['Quando','o item chegar à produção'],['Então','o bônus contratual deve ser reconhecido'],['E','a evidência auditável deve ser arquivada']]},
+   {t:'Descumprimento do prazo',p:[['Dado','que a data limite foi ultrapassada'],['Quando','o item ainda não estiver em produção'],['Então','a multa deve ser aplicada ao custo do período']]}
+  ],risco:'A data não é negociável — o único grau de liberdade é o escopo. Antecipar não gera valor extra; atrasar gera multa.'}
+};
+function specOf(c){
+ if(c.type==='bug')return bugSpecs[(parseInt(String(c.id).replace(/\D/g,''),10)||0)%bugSpecs.length];
+ if(c.type==='debt')return techSpecs[c.name]||techSpecs['Refatorar pagamentos'];
+ return specs[c.name]||genericSpec[c.type]||techSpecs['Refatorar pagamentos'];
+}
+const names=['Checkout PIX','Login biométrico','Dashboard comercial','Busca inteligente','Programa de pontos','Notificações push','Exportar relatórios','Cadastro simplificado','Rastreio de pedido','Pagamento recorrente','Chat de suporte','Recomendações IA','Carrinho compartilhado','Cupons dinâmicos','Central de ajuda','Assinatura premium'];
+const debtNames=['Refatorar pagamentos','Automatizar pipeline','Atualizar framework','Cobertura de testes do core','Reduzir acoplamento da API'];
+let seq=1; const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+function item(type='standard',day=1,pool=null){
+ const effort={refine:rnd(1,3),plan:rnd(1,2),dev:rnd(3,8),test:rnd(1,4),hml:rnd(1,2)};
+ let name=names[(seq*5+rnd(0,4))%names.length],subs=rnd(2,8),due=null,bonus=0;
+ if(type==='debt'){name=debtNames[seq%debtNames.length];subs=0;effort.dev=rnd(4,7)}
+ if(type==='bug'){name='Bug crítico '+seq;subs=0;effort.refine=0;effort.plan=0;effort.dev=rnd(2,4)}
+ if(type==='expedite'){name='Pedido urgente do cliente-chave';subs=rnd(7,12);bonus=55}
+ if(type==='fixed'){name='Integração regulatória';subs=rnd(4,8);due=day+rnd(7,10);bonus=35}
+ const o={id:'w'+seq++,name,type,col:'backlog',created:day,commit:null,done:null,effort:{...effort},rest:{...effort},touch:0,wait:0,blocked:0,subs,due,bonus,late:false,dep:null,colSince:day};
+ // Dependência real: só aponta para item mais antigo já existente (impede ciclo). Não se aplica a bug/expedite.
+ if((type==='standard'||type==='fixed')&&pool&&pool.length&&Math.random()<.22){
+  const cand=pool.filter(x=>!x.done&&x.id!==o.id&&x.type!=='bug');
+  if(cand.length)o.dep=cand[rnd(0,cand.length-1)].id;
+ }
+ if(type==='bug'||type==='expedite'){o.col='readyDev';o.commit=day}
+ return o;
+}
+function initial(){
+ let cards=[];for(let i=0;i<14;i++)cards.push(item('standard',1,cards));for(let i=0;i<3;i++)cards.push(item('debt',1,cards));
+ const f=cards.filter(x=>x.type==='standard');
+ function zero(c,...s){s.forEach(k=>c.rest[k]=0)}
+ f[0].col='prod';f[0].commit=1;f[0].done=3;zero(f[0],'refine','plan','dev','test','hml');f[0].touch=3;
+ f[1].col='hml';f[1].commit=1;zero(f[1],'refine','plan','dev','test');f[1].rest.hml=1;
+ [f[2],f[3],f[4]].forEach((c,i)=>{c.col='readyTest';c.commit=1+i%2;zero(c,'refine','plan','dev')});
+ f[5].col='test';f[5].commit=2;zero(f[5],'refine','plan','dev');
+ [f[6],f[7],f[8]].forEach((c,i)=>{c.col='dev';c.commit=1+i;zero(c,'refine','plan')});f[7].blocked=2;
+ [f[9],f[10]].forEach(c=>{c.col='readyDev';c.commit=3;zero(c,'refine','plan')});
+ f[11].col='plan';zero(f[11],'refine');f[12].col='readyPlan';zero(f[12],'refine');f[13].col='refine';
+ return cards;
+}
+// Reconstrói o histórico dos dias 1–3 (gestão anterior, antes da passagem de bastão).
+// Não inventa dados: deriva das datas de criação, compromisso e entrega que os cartões já carregam.
+function seedHistory(cards){
+ const idx=id=>order.indexOf(id),rd=idx('readyDev'),prodI=idx('prod'),h=[];
+ for(let d=1;d<=3;d++){
+  const b={day:d,wip:0,doneDay:0,backlog:0,upstream:0,dev:0,test:0,hml:0,prod:0};
+  // custo fixo da equipe roda desde o dia 1 (8k/dia = os 24k iniciais em 3 dias);
+  // a receita inicial de 7k veio da entrega do dia 3 (5 assinantes × 1,4).
+  b.cost=TEAM_COST*d;b.revenue=(d>=3?7:0);b.profit=b.revenue-b.cost;b.subs=(d>=3?5:0);
+  cards.forEach(c=>{
+   let ci;
+   if(c.done!=null&&d>=c.done)ci=prodI;                        // já entregue naquele dia
+   else if(c.commit!=null&&c.commit<=d){                       // comprometido: progride do commit até a posição atual
+    const cur=idx(c.col),span=Math.max(1,4-c.commit);
+    ci=Math.round(rd+(cur-rd)*((d-c.commit)/span));
+    ci=Math.max(rd,Math.min(prodI-1,ci));                      // sem entrar em produção sem entrega registrada
+   }else{const cur=idx(c.col);ci=cur<rd?cur:0}                 // ainda no upstream
+   const id=order[ci];
+   if(id==='backlog')b.backlog++;
+   else if(['refine','readyPlan','plan'].includes(id))b.upstream++;
+   else if(['readyDev','dev'].includes(id))b.dev++;
+   else if(['readyTest','test'].includes(id))b.test++;
+   else if(['readyHml','hml'].includes(id))b.hml++;
+   else b.prod++;
+   if(c.commit!=null&&c.commit<=d&&!(c.done!=null&&d>=c.done))b.wip++;
+   if(c.done===d)b.doneDay++;
+  });
+  h.push(b);
+ }
+ return h;
+}
+const initialCards=initial();
+const state={
+ screen:'intro',player:{name:'',class:''},day:4,cards:initialCards,wip:{refine:2,readyPlan:3,plan:2,readyDev:4,dev:3,readyTest:3,test:2,readyHml:2,hml:2},
+ assign:{},debt:4,subs:5,revenue:7,cost:24,sle:9,history:seedHistory(initialCards),deliveries:[{day:3,name:'Primeira entrega',lt:3,type:'standard',fe:1,value:63}],logs:[],event:null,eventChoice:null,detail:null,daily:false,criterios:null,contratacoes:[],tab:'team',score:0,policies:{noLimitsUntil:0,siloUntil:0,meetingDay:0,mobDay:0},absent:{},achievements:[]
+};
+function percentile(arr,p){if(!arr.length)return null;const s=[...arr].sort((a,b)=>a-b);return s[Math.min(s.length-1,Math.ceil(p/100*s.length)-1)]}
+function mean(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:null}
+function committed(){return state.cards.filter(c=>c.commit&&!c.done)}
+function throughput(){const d=Math.max(1,state.day-1);return state.deliveries.length/d}
+const PRED_MAX=150; // teto do termo de previsibilidade — deliberadamente menor que lucro e SLE
+function predictability(){
+ const lts=state.deliveries.map(d=>d.lt);
+ // amostra mínima: com poucas entregas o P85/P50 é ruído e daria pontos de graça
+ if(lts.length<8)return{pts:0,ratio:null,motivo:'amostra insuficiente (mín. 8 entregas)'};
+ const p50=percentile(lts,50),p85=percentile(lts,85);
+ if(!p50||!p85)return{pts:0,ratio:null,motivo:'sem dados'};
+ const ratio=p85/p50;
+ const q=Math.max(0,Math.min(1,(3-ratio)/2)); // 1,0 → cheio | 3,0+ → zero
+ return{pts:Math.round(PRED_MAX*q),ratio,motivo:null};
+}
+function recalcScore(){const inSle=state.deliveries.filter(d=>d.lt<=state.sle).length;state.score=Math.max(0,Math.round(state.revenue-state.cost))+inSle*25+state.achievements.length*40+predictability().pts}
+function saveRank(){
+ const rows=lerRanking();
+ rows.push({name:state.player.name,class:state.player.class,score:state.score,rank:rankName(),profit:Math.round(state.revenue-state.cost),date:new Date().toISOString()});
+ gravarRanking(rows.slice(-100));
+}
+// Faixas calibradas sobre a distribuição real de 150 partidas simuladas (5 arquétipos × 30).
+// O localStorage lança exceção em file:// e em navegação privada em alguns navegadores.
+// Sem esta proteção, a tela final quebrava justamente onde o aluno mais precisa dela.
+const RANK_KEY='flowlab-ranking';
+let _rankMem=[];              // reserva em memória quando o armazenamento não está disponível
+function lerRanking(){
+ try{return JSON.parse(localStorage.getItem(RANK_KEY)||'[]')}catch(e){return _rankMem}
+}
+function gravarRanking(rows){
+ _rankMem=rows;
+ try{localStorage.setItem(RANK_KEY,JSON.stringify(rows))}catch(e){/* segue só em memória */}
+}
+function rankName(){return state.score>=2400?'Lenda do Fluxo':state.score>=1800?'Mestre Kanban':state.score>=1300?'Gestor de Fluxo':state.score>=800?'Praticante':'Aprendiz'}
+function render(){recalcScore();document.getElementById('app').innerHTML=state.screen==='intro'?intro():state.screen==='game'?game():final();bind()}
+function intro(){
+ return `<div class="hero"><div class="grid2"><div><div class="brand">FLOW<b>LAB</b></div><div class="credit">Jogo criado por <b>Prof. Ari Amaral</b></div><h1>Você não gerencia pessoas.<br><span>Você gerencia fluxo.</span></h1><p>Assuma a operação da <b>OrbitPay</b>, uma empresa de produtos digitais pressionada por clientes, bugs, prazos e decisões executivas. Seu desafio é maximizar valor sem transformar o quadro em estacionamento de trabalho.</p>
+ <div class="kpis"><div class="kpi"><small>Decisões</small><b>WIP, políticas, prioridade</b></div><div class="kpi"><small>Métricas</small><b>P50, P85, Aging, CFD</b></div><div class="kpi"><small>Duração</small><b>30 dias simulados</b></div></div></div>
+ <div class="panel"><h3>Entrar na simulação</h3><label>Nome do aluno</label><input id="name" placeholder="Seu nome"/><label>Turma</label><input id="class" placeholder="Ex.: MBA Agilidade 2026"/><button id="start" class="primary" style="width:100%;margin-top:14px">Começar a jornada</button><p style="font-size:11px;color:#8fa6c6">Os resultados ficam salvos neste navegador.</p></div></div></div>`;
+}
+function classLegend(){
+ return `<div class="clegend">${Object.entries(service).map(([k,v])=>
+  `<span class="cl-item" title="${v.politica}"><i style="background:${v.cor}"></i>${v.icon} ${v.label}${(k==='expedite'||k==='bug')?' <b class="cl-w">fura WIP</b>':''}</span>`).join('')}
+  <span class="cl-more">Detalhe das políticas na aba 📜 Políticas</span></div>`;
+}
+function classPolicyTable(){
+ const cont=Object.fromEntries(Object.keys(service).map(k=>[k,state.cards.filter(c=>c.type===k&&!c.done).length]));
+ const ent=Object.fromEntries(Object.keys(service).map(k=>[k,state.deliveries.filter(d=>d.type===k).length]));
+ return `<h4 style="margin:6px 0 2px">Classes de serviço</h4>
+ <p style="font-size:12px;color:#475569;margin:0 0 10px">Classe de serviço é um acordo sobre <b>como cada tipo de trabalho atravessa o sistema</b> — não é prioridade individual de item. A cor no quadro é a mesma em todos os gráficos.</p>
+ <div class="cltable">${Object.entries(service).map(([k,v])=>`
+  <div class="clrow" style="border-left-color:${v.cor}">
+   <div class="clh"><span class="cldot" style="background:${v.cor}"></span><b>${v.icon} ${v.label}</b>
+    <span class="clcount">${cont[k]} em fluxo · ${ent[k]} entregue(s)</span></div>
+   <div class="clb"><span><small>POLÍTICA</small>${v.politica}</span>
+    <span><small>EXPECTATIVA</small>${v.expectativa}</span>
+    <span><small>VALOR</small>${v.valor}</span></div>
+  </div>`).join('')}</div>`;
+}
+/* ===== BANCA DE ESPECIALISTAS =====
+   Cada especialista tem uma lente própria, analisa os dados REAIS da partida e devolve:
+   veredito · diagnóstico com números · dica acionável · conceito para estudar.
+   As referências bibliográficas ficam ao final, na função referencias(). */
+
+function flowStats(){
+ const lts=state.deliveries.map(d=>d.lt).filter(v=>v!=null);
+ const p50=percentile(lts,50),p85=percentile(lts,85),p95=percentile(lts,95);
+ const h=state.history,dias=h.length||1;
+ const wipMedio=h.reduce((a,b)=>a+(b.wip||0),0)/dias;
+ const tps=h.map(x=>x.doneDay||0);
+ const tpMedio=tps.reduce((a,b)=>a+b,0)/dias;
+ const tpVar=Math.sqrt(tps.reduce((a,b)=>a+Math.pow(b-tpMedio,2),0)/dias);
+ const fes=state.deliveries.map(d=>d.fe).filter(v=>v!=null);
+ const fe=fes.length?fes.reduce((a,b)=>a+b,0)/fes.length:0;
+ const dentroSle=lts.filter(v=>v<=state.sle).length;
+ const wipAtual=committed().filter(c=>!c.done&&c.col!=='prod');
+ const maisVelho=Math.max(0,...wipAtual.map(c=>state.day-c.commit+1));
+ const diasComExcesso=h.filter(x=>(x.over||0)>0).length;
+ const bloqDias=state.cards.reduce((a,c)=>a+(c.blockedTotal||0),0);
+ const porTipo=t=>state.deliveries.filter(d=>d.type===t).length;
+ const naoPlanejado=porTipo('bug')+porTipo('expedite');
+ const valorEntregue=state.deliveries.reduce((a,d)=>a+(d.value||0),0);
+ // só é ladrão a dependência que trava trabalho JÁ COMPROMETIDO — no backlog ela ainda é opção
+ const depsPend=state.cards.filter(c=>{if(!c.commit||c.done||c.col==='prod')return false;
+  const d=c.dep?state.cards.find(x=>x.id===c.dep):null;return d&&d.col!=='prod'}).length;
+ const propNaoPlan=state.deliveries.length?naoPlanejado/state.deliveries.length:0;
+ return {lts,p50,p85,p95,ratio:(p50&&p85)?p85/p50:null,wipMedio,tpMedio,tpVar,
+  cv:tpMedio?tpVar/tpMedio:null,fe,dentroSle,total:lts.length,
+  sleRate:lts.length?dentroSle/lts.length:0,maisVelho,diasComExcesso,dias,bloqDias,
+  naoPlanejado,propNaoPlan,porTipo,valorEntregue,depsPend,wipAtual:wipAtual.length,
+  little:tpMedio?wipMedio/tpMedio:null};
+}
+
+const banca=[
+ {id:'metricas',nome:'Marina',papel:'Especialista em Métricas de Fluxo',ic:'📐',
+  analise:s=>{
+   if(!s.total)return{k:'warn',v:'Sem entregas suficientes para medir',
+    d:'Sem histórico de lead time não há o que analisar. Métrica de fluxo nasce da entrega, não da estimativa.',
+    dica:'Entregue ao menos oito itens antes de tentar qualquer previsão.',
+    conceito:'Lead time é medido do <b>compromisso</b> até a produção — não do surgimento da ideia.'};
+   const r=s.ratio;
+   // consistência só vale se o patamar for aceitável: mediana acima do SLE derruba o veredito
+   const lento=s.p50>state.sle;
+   let k=r==null?'warn':r<=1.6?'good':r<=2.3?'warn':'bad';
+   if(lento)k=(k==='good')?'warn':'bad';
+   return {k,
+    v:`P50 = ${s.p50}d · P85 = ${s.p85}d · P95 = ${s.p95}d${r?` · razão P85/P50 = ${r.toFixed(2)}`:''}`,
+    d:lento
+     ?`Razão de ${r.toFixed(2)} indica regularidade, mas num patamar ruim: a mediana de ${s.p50} dias já ultrapassa o SLE de ${state.sle}. Ser consistentemente lento é previsível e insuficiente — o cliente não celebra a variabilidade baixa de um prazo que ele não aceita.`
+     :k==='good'
+     ?`Cauda curta. Com razão de ${r.toFixed(2)}, seu sistema é previsível: prometer ${s.p85} dias entrega em 85% dos casos, e essa promessa se sustenta.`
+     :k==='warn'
+     ?`Razão de ${r.toFixed(2)} indica cauda moderada. A diferença entre o caso típico (${s.p50}d) e o caso ruim (${s.p85}d) já é grande o bastante para quebrar compromissos assumidos pela mediana.`
+     :`Razão de ${r.toFixed(2)} revela cauda longa. Seu P95 (${s.p95}d) é ${(s.p95/s.p50).toFixed(1)}× a mediana: há uma classe de trabalho escondida se comportando de forma completamente diferente do resto.`,
+    dica:k==='good'
+     ?`Publique o P85 como acordo de nível de serviço e monitore a razão semanalmente. Se ela subir, algo mudou no sistema antes de aparecer na média.`
+     :`Separe as entregas por classe de serviço e refaça os percentis para cada uma. Cauda longa quase nunca é aleatória: costuma ser um tipo específico de item — bloqueado, dependente ou grande demais — misturado com os demais.`,
+    conceito:`A média é a estatística menos útil aqui. Distribuições de lead time são assimétricas com cauda à direita: a média fica <b>abaixo</b> do que o cliente costuma esperar, e comprometer-se por ela falha sistematicamente. Use percentis.`};
+  }},
+
+ {id:'filas',nome:'Otávio',papel:'Economista de Filas',ic:'💸',
+  analise:s=>{
+   const k=s.fe>=.75?'good':s.fe>=.55?'warn':'bad';
+   const esperaPct=(1-s.fe)*100;
+   return {k,
+    v:`Eficiência de fluxo = ${(s.fe*100).toFixed(0)}% · WIP médio = ${s.wipMedio.toFixed(1)} · valor entregue = R$ ${Math.round(s.valorEntregue)}k`,
+    d:`De cada item entregue, ${esperaPct.toFixed(0)}% do tempo foi <b>espera</b>, não trabalho. ${k==='bad'?'Isso significa que acelerar as pessoas resolveria quase nada: o problema está nas filas entre as etapas, não na velocidade de quem executa.':k==='warn'?'Ainda há mais espera do que trabalho, mas o sistema respira.':'Proporção saudável — a maior parte do lead time virou trabalho de fato.'}`,
+    dica:esperaPct>60
+     ?`Antes de pedir mais gente, reduza o WIP. Fila é estoque: custa dinheiro parado e não aparece em nenhuma linha do orçamento. Corte o limite da coluna com maior acúmulo e observe o lead time cair sem ninguém trabalhar mais.`
+     :`Ataque a maior fila do CFD, não a etapa mais lenta. A banda que mais engorda no gráfico é onde o dinheiro está parado.`,
+    conceito:`Atenção à escala: neste simulador a eficiência de fluxo é alta porque há poucas etapas e nenhuma espera externa. Em sistemas reais o mesmo cálculo costuma ficar entre 5% e 40% — e a primeira medição quase sempre choca a organização. O custo de atraso não é uma taxa — é <b>valor que deixa de existir</b>. No jogo, cada item entregue tarde alcança menos ciclos de cobrança: o item não perdeu valor, o calendário o consumiu. Priorizar por custo de atraso dividido pela duração (CD3) rende mais que priorizar pelo maior valor absoluto.`};
+  }},
+
+ {id:'ladroes',nome:'Dani',papel:'Caçadora de Ladrões de Tempo',ic:'🕵️',
+  analise:s=>{
+   const l=[];
+   if(s.wipMedio>9)l.push(`<b>WIP demais</b> — média de ${s.wipMedio.toFixed(1)} itens em progresso`);
+   if(s.depsPend)l.push(`<b>Dependências desconhecidas</b> — ${s.depsPend} item(ns) travado(s) esperando outro`);
+   if(s.propNaoPlan>.25)l.push(`<b>Trabalho não planejado</b> — ${(s.propNaoPlan*100).toFixed(0)}% das entregas foram bugs ou expedites`);
+   if(s.diasComExcesso)l.push(`<b>Prioridades conflitantes</b> — limites violados por decisão sua (fora de expedite e bug) em ${s.diasComExcesso} de ${s.dias} dias`);
+   if(state.debt>3)l.push(`<b>Trabalho negligenciado</b> — débito técnico terminou em ${state.debt}/10`);
+   const k=l.length===0?'good':l.length<=2?'warn':'bad';
+   return {k,
+    v:l.length?`${l.length} de 5 ladrões de tempo ativos`:'Nenhum ladrão de tempo relevante',
+    d:l.length?`Estes roubaram capacidade da sua equipe:<br>• ${l.join('<br>• ')}`:'Fluxo limpo: pouco WIP, poucas dependências travadas e trabalho não planejado sob controle.',
+    dica:s.naoPlanejado>3
+     ?`Trabalho não planejado nunca é aleatório. No jogo, bug emerge do débito técnico — quanto maior o débito, maior a chance diária. Reservar capacidade para o item de débito é o que reduz o volume de bugs no futuro. Tente uma partida com capacidade fixa dedicada a débito.`
+     :s.wipMedio>7
+     ?`Torne o WIP visível antes de tentar reduzi-lo. Contar quantos itens estão realmente abertos costuma ser mais chocante que qualquer argumento teórico.`
+     :`Faça as dependências visíveis no quadro. Dependência que ninguém enxerga vira fila que ninguém explica.`,
+    conceito:`Os cinco ladrões de tempo — WIP excessivo, dependências desconhecidas, trabalho não planejado, prioridades conflitantes e trabalho negligenciado — não competem: eles <b>se alimentam</b>. Débito negligenciado gera trabalho não planejado, que estoura prioridades, que aumenta o WIP.`};
+  }},
+
+ {id:'previsao',nome:'Tomás',papel:'Analista de Previsibilidade',ic:'🎲',
+  analise:s=>{
+   const cv=s.cv;
+   const k=cv==null?'warn':cv<=.6?'good':cv<=1?'warn':'bad';
+   return {k,
+    v:`Throughput médio = ${s.tpMedio.toFixed(2)} itens/dia · desvio = ${s.tpVar.toFixed(2)}${cv?` · coeficiente de variação = ${cv.toFixed(2)}`:''}`,
+    d:k==='good'
+     ?`Vazão estável. Com essa consistência, uma simulação a partir do seu histórico produz previsões confiáveis.`
+     :`Vazão irregular (variação de ${cv?cv.toFixed(2):'—'}). Previsões feitas sobre um histórico instável herdam a instabilidade: a faixa de resultados possíveis fica larga demais para sustentar um compromisso.`,
+    dica:`Nunca prometa uma data pela média. Rode a simulação, olhe o percentil de 85% e prometa esse número. E lembre: para previsão de <b>quantidade</b>, o compromisso seguro está no percentil BAIXO — 85% dos cenários entregam pelo menos aquilo. Para previsão de <b>prazo</b>, é o inverso.`,
+    conceito:`A Lei de Little (lead time = WIP ÷ throughput) só vale sob condições que quase nunca se verificam: sistema estável, nada entrando sem sair, unidades consistentes. Seu lead time previsto foi ${s.little?s.little.toFixed(1)+' dias':'—'}${s.p50?`, contra ${s.p50} de mediana real`:''}. A distância entre os dois mede o quanto seu sistema violou essas condições.`};
+  }},
+
+ {id:'kanban',nome:'Davi',papel:'Especialista no Método Kanban',ic:'🎩',
+  analise:s=>{
+   const excessoPct=s.dias?s.diasComExcesso/s.dias:0;
+   // aderência ao limite E capacidade de cumprir o acordo de nível de serviço
+   const k=(excessoPct<=.1&&s.sleRate>=.8)?'good':(excessoPct<=.3&&s.sleRate>=.6)?'warn':'bad';
+   const classes=['standard','expedite','fixed','debt'].filter(t=>s.porTipo(t)>0).length;
+   return {k,
+    v:`Limites respeitados em ${((1-excessoPct)*100).toFixed(0)}% dos dias · ${classes} classe(s) de serviço entregue(s) · ${s.dentroSle}/${s.total} dentro do SLE`,
+    d:k==='good'
+     ?`Você tratou o limite de WIP como política, não como sugestão, e entregou ${(s.sleRate*100).toFixed(0)}% dentro do SLE. É isso que transforma um quadro em sistema puxado — e um acordo de prazo em algo que se sustenta.`
+     :s.diasComExcesso>0
+     ?`Limites violados por decisão sua em ${s.diasComExcesso} dos ${s.dias} dias (expedite e bug atravessam por política e não entram nessa conta). Limite que se dobra sob pressão não é limite: é decoração.`
+     :`Os limites foram respeitados, mas apenas ${(s.sleRate*100).toFixed(0)}% das entregas ficaram dentro do SLE de ${state.sle} dias. Respeitar o limite sem cumprir o acordo indica que o problema não está na entrada de trabalho — está no que já entrou: itens envelhecendo, bloqueios não tratados ou lote grande demais.`,
+    dica:s.porTipo('expedite')>2
+     ?`Você usou expedite ${s.porTipo('expedite')} vezes. Classe de serviço só funciona se for <b>escassa</b>: quando tudo é urgente, nada é. Estabeleça uma cota — por exemplo, no máximo um expedite em curso — e negocie com base nela.`
+     :`Escreva as políticas antes de precisar delas. Política combinada em momento de crise vira exceção; política explícita e visível vira acordo.`,
+    conceito:`O <b>ponto de compromisso</b> é a decisão mais subestimada do método. Antes dele, o item é uma opção: descartar é barato. Depois dele, o relógio corre e o custo é real. Neste jogo o compromisso começa em Pronto para Desenvolvimento — e adiar essa entrada é uma estratégia legítima, não procrastinação.`};
+  }},
+
+ {id:'capacidade',nome:'Rui',papel:'Especialista em Capacidade e Custo',ic:'💵',
+  analise:s=>{
+   const r=custoValorReport(),c=state.contratacoes||[];
+   // ROI sozinho premia quem nunca investe: considera também o retorno absoluto gerado
+   const lucro=state.revenue-state.cost;
+   const k=(r.roi>=4.5&&lucro>=1000)?'good':(r.roi>=3||lucro>=600)?'warn':'bad';
+   const tarde=c.filter(x=>x.dia>DAYS-12);
+   return {k,
+    v:`Retorno ${r.roi.toFixed(2)}× · custo R$ ${Math.round(r.custoTotal)}k · ${r.diasPessoa} dias-pessoa · ${c.length} contratação(ões)`,
+    d:c.length
+     ?`Contratação de ${c.map(x=>x.name+' ('+x.role+', dia '+x.dia+')').join(', ')}: o time passou de 7 para ${7+c.length} pessoas, somando R$ ${(r.taxas+c.reduce((a,x)=>a+x.custo*(DAYS-x.dia+1),0)).toFixed(0)}k ao custo do projeto.${tarde.length?` ${tarde.length} contratação(ões) aconteceu(ram) nos últimos dias — tempo insuficiente para superar a curva de adaptação e devolver o investimento.`:''} O retorno de ${r.roi.toFixed(2)}× ${k==='good'?'mostra que a capacidade adicional se converteu em valor.':k==='warn'?'ficou apertado: a capacidade extra mal cobriu o próprio custo.':'não cobriu o custo: a capacidade entrou fora da etapa que restringia o fluxo.'}`
+     :`Você operou os 30 dias com o time inicial. Retorno de ${r.roi.toFixed(2)}× sobre R$ ${Math.round(r.custoTotal)}k. ${k==='good'?'Extrair valor sem ampliar custo é o resultado mais difícil de alcançar — e o mais valioso.':'Vale investigar se alguma etapa ficou permanentemente represada: capacidade parada na etapa errada custa igual.'}`,
+    dica:`Antes de contratar, identifique a <b>restrição</b>. Adicionar capacidade fora dela aumenta o custo sem mover a vazão — o sistema continua limitado pelo mesmo ponto. E capacidade nova sempre custa duas vezes: o salário e o tempo de quem ensina.`,
+    conceito:`Custo por entrega foi de R$ ${r.porItem.toFixed(1)}k neste projeto. Esse número diz mais que produtividade individual: ele mede o sistema, não as pessoas. Time maior com fluxo ruim entrega mais caro que time pequeno com fluxo bom — porque o desperdício está na espera, e espera escala junto com o WIP.`};
+  }},
+ {id:'sistemas',nome:'Selma',papel:'Pensadora Sistêmica',ic:'🔄',
+  analise:s=>{
+   const arq=[];
+   if(state.debt>=4&&s.porTipo('bug')>=2)arq.push({n:'Transferência de responsabilidade',
+    t:`Você resolveu sintomas (${s.porTipo('bug')} bugs corrigidos) em vez da causa (débito em ${state.debt}/10). A solução paliativa alivia hoje e reforça o problema amanhã: cada bug corrigido consumiu capacidade que reduziria o débito que gera os bugs.`});
+   if(s.wipMedio>9&&s.tpMedio<1.3)arq.push({n:'Correções que falham',
+    t:`Iniciar mais trabalho para entregar mais é a correção que piora o sistema: WIP médio de ${s.wipMedio.toFixed(1)} com vazão de ${s.tpMedio.toFixed(2)}/dia. A ação parece produtiva no curto prazo e alonga o lead time de tudo no médio.`});
+   if(s.bloqDias>10)arq.push({n:'Limites ao crescimento',
+    t:`${s.bloqDias} dias-item em bloqueio. Impedimentos não tratados formam o teto invisível do sistema: você pode adicionar capacidade indefinidamente que a saída não sobe.`});
+   const k=arq.length===0?'good':arq.length===1?'warn':'bad';
+   return {k,
+    v:arq.length?`${arq.length} arquétipo(s) sistêmico(s) identificado(s)`:'Nenhum padrão sistêmico prejudicial evidente',
+    d:arq.length?arq.map(a=>`<b>${a.n}</b> — ${a.t}`).join('<br><br>'):'Suas decisões não caíram nos padrões clássicos de piora sistêmica. As melhorias foram estruturais, não paliativas.',
+    dica:`Quando uma ação melhora o indicador rapidamente, desconfie: pergunte o que ela piora em outro lugar e com qual atraso. Atraso entre causa e efeito é o que faz sistemas parecerem irracionais.`,
+    conceito:`Estrutura gera comportamento. Culpar pessoas por resultados que a estrutura produz é o erro mais comum na gestão — a mesma equipe, sob limites e políticas diferentes, entrega resultados diferentes. Foi exatamente isso que você acabou de testar.`};
+  }}
+];
+
+function trilha(s){
+ const p=[];
+ if(s.fe<.3)p.push({t:'Reduza o WIP antes de qualquer outra coisa',d:'Sua eficiência de fluxo indica que a maior parte do tempo é espera. Nenhuma outra melhoria rende tanto quanto cortar trabalho iniciado em excesso.'});
+ if(s.ratio&&s.ratio>2.3)p.push({t:'Separe classes de trabalho e refaça os percentis',d:'Cauda longa costuma ser um tipo específico de item disfarçado no meio dos demais.'});
+ if(state.debt>4)p.push({t:'Reserve capacidade fixa para débito técnico',d:'O débito não cobra juros no futuro abstrato: ele cobra em bugs e lentidão hoje.'});
+ if(s.diasComExcesso/Math.max(1,s.dias)>.3)p.push({t:'Trate limites de WIP como política, não sugestão',d:'Sem limite respeitado não existe sistema puxado.'});
+ if(s.maisVelho>state.sle)p.push({t:'Adote a caminhada da direita para a esquerda',d:'Terminar o que está mais perto do cliente antes de começar qualquer coisa nova.'});
+ if(!p.length)p.push({t:'Experimente restringir ainda mais o WIP',d:'Seu fluxo está saudável. O próximo aprendizado vem de testar o limite: reduza os limites em uma unidade e observe onde o sistema quebra.'});
+ return p.slice(0,4);
+}
+
+function referencias(){
+ return [
+  ['Kanban: Successful Evolutionary Change for Your Technology Business','David J. Anderson','Classes de serviço, políticas explícitas e ponto de compromisso.'],
+  ['Actionable Agile Metrics for Predictability','Daniel S. Vacanti','Aging WIP, percentis de lead time, scatterplot e SLE.'],
+  ['When Will It Be Done?','Daniel S. Vacanti','Previsão probabilística e por que a média falha.'],
+  ['The Principles of Product Development Flow','Donald G. Reinertsen','Economia de filas, custo de atraso e tamanho de lote.'],
+  ['Making Work Visible','Dominica DeGrandis','Os cinco ladrões de tempo.'],
+  ['Forecasting and Simulating Software Development Projects','Troy Magennis','Monte Carlo aplicado a fluxo.'],
+  ['The Fifth Discipline','Peter Senge','Arquétipos sistêmicos e estrutura que gera comportamento.'],
+  ['Kanban Maturity Model','David J. Anderson e Teodora Bozheva','Evolução das práticas por nível de maturidade.']
+ ];
+}
+
+function expertPanel(completo){
+ const s=flowStats();
+ const cls={good:'ex-good',warn:'ex-warn',bad:'ex-bad'};
+ const rot={good:'✅ Bem resolvido',warn:'⚠️ Atenção',bad:'🔴 Precisa mudar'};
+ const cards=banca.map(e=>{const a=e.analise(s);
+  return `<div class="expert2 ${cls[a.k]}">
+   <div class="ex-h"><span class="ex-ic">${e.ic}</span><div><b>${e.nome}</b><small>${e.papel}</small></div><span class="ex-tag">${rot[a.k]}</span></div>
+   <div class="ex-v">${a.v}</div>
+   <div class="ex-d">${a.d}</div>
+   <div class="ex-t"><small>💡 DICA</small>${a.dica}</div>
+   ${completo?`<div class="ex-c"><small>📚 CONCEITO PARA ESTUDAR</small>${a.conceito}</div>`:''}
+  </div>`}).join('');
+ const t=trilha(s);
+ const trilhaHtml=`<div class="trilha"><h4>🎯 Por onde começar a melhorar</h4>
+  ${t.map((x,i)=>`<div class="tr-i"><span class="tr-n">${i+1}</span><div><b>${x.t}</b><span>${x.d}</span></div></div>`).join('')}</div>`;
+ const refs=completo?`<div class="refs"><h4>📖 Para aprofundar</h4>
+  ${referencias().map(([tit,aut,sob])=>`<div class="ref-i"><b>${tit}</b> <span class="ref-a">${aut}</span><span class="ref-s">${sob}</span></div>`).join('')}</div>`:'';
+ return `<div class="banca">${cards}</div>${trilhaHtml}${refs}`;
+}
+/* ===== CRITÉRIOS DE PRONTO (políticas explícitas de saída de cada etapa) =====
+   Em Kanban, o que autoriza um item a atravessar a fronteira de uma coluna precisa estar escrito.
+   Cada entrada abaixo descreve o que deve estar VERDADEIRO para o item entrar naquela fila. */
+const criterios={
+ backlog:{titulo:'Entrada no Backlog',resumo:'Item capturado, ainda sem compromisso.',
+  itens:['Necessidade ou problema descrito em uma frase compreensível','Origem identificada (cliente, negócio, técnica ou defeito)','Nenhuma estimativa nem promessa de data ainda'],
+  nota:'Backlog é opção, não compromisso. Descartar um item aqui é barato — e essa é justamente a vantagem de mantê-lo pouco elaborado.'},
+ refine:{titulo:'Em Refinamento de Negócio',resumo:'Trabalhando o QUÊ e o PORQUÊ.',
+  itens:['Problema do usuário compreendido antes de discutir solução','Regras de negócio e exceções sendo mapeadas','Valor esperado sendo dimensionado'],
+  nota:'Participam produto, análise e qualidade. Trazer teste para cá é o que evita descobrir ambiguidade só na homologação.'},
+ readyPlan:{titulo:'Pronto para Refinamento Técnico',resumo:'Refinamento de Negócio CONCLUÍDO.',
+  itens:['História de usuário bem escrita: Como / quero / para, com o benefício explícito',
+   'Critérios de aceite definidos em cenários (Dado / Quando / Então), incluindo caminho de exceção',
+   'Regras de negócio e exceções mapeadas',
+   'O PO apresentou ao time e o time entendeu <b>o que fazer</b> e <b>por quê</b>',
+   'Dependências de negócio identificadas',
+   'Item pequeno o bastante para atravessar o fluxo em poucos dias (se não for, foi fatiado)',
+   'Valor de negócio estimado'],
+  nota:'Se o time não consegue repetir com as próprias palavras o problema que o item resolve, ele não está pronto — independentemente de quanto texto já foi escrito.'},
+ plan:{titulo:'Em Refinamento Técnico',resumo:'Trabalhando o COMO.',
+  itens:['Abordagem técnica sendo discutida com quem vai implementar','Impactos em sistemas, contratos e dados sendo levantados','Riscos técnicos e alternativas sendo avaliados'],
+  nota:'Participam análise, desenvolvimento e produto. Sem o PO aqui, decisões técnicas viram decisões de escopo sem que ninguém perceba.'},
+ readyDev:{titulo:'Pronto para Desenvolvimento ★',resumo:'Refinamento Técnico CONCLUÍDO — este é o PONTO DE COMPROMISSO.',
+  itens:['O time entendeu <b>como fazer</b>: abordagem técnica acordada entre quem vai implementar',
+   'Detalhamento técnico registrado: impactos, contratos, modelo de dados, pontos de integração',
+   'Dependências técnicas identificadas e com encaminhamento definido',
+   'Esforço dimensionado e item fatiado a um tamanho que atravessa o fluxo rapidamente',
+   'Priorizado pelo PO por <b>valor × esforço</b> (custo de atraso considerado)',
+   'Critérios de aceite testáveis e estratégia de teste acordada',
+   'Nenhum impedimento conhecido para começar hoje'],
+  nota:'A partir daqui o relógio do lead time começa a correr e o custo passa a ser real. Puxar para cá cedo demais não acelera nada: só faz o item envelhecer numa fila.'},
+ dev:{titulo:'Em Desenvolvimento',resumo:'Construindo.',
+  itens:['Trabalho ativo por quem puxou o item','Dúvidas de negócio resolvidas com o PO sem parar o fluxo','Impedimento sinalizado no mesmo dia em que aparece'],
+  nota:'Item bloqueado aqui é o problema mais caro do quadro: consome WIP, envelhece e não avança.'},
+ readyTest:{titulo:'Pronto para Teste',resumo:'Desenvolvimento CONCLUÍDO.',
+  itens:['Implementação completa contra todos os critérios de aceite',
+   'Revisão de código aprovada por outra pessoa',
+   'Testes automatizados escritos e passando',
+   'Integrado ao ramo principal com build verde',
+   'Implantado em ambiente de teste',
+   'Autoverificação feita pelo desenvolvedor contra os cenários acordados',
+   'Sem regressão conhecida introduzida'],
+  nota:'"Terminei, só falta testar" não é terminado. Se o teste ainda pode devolver o item, ele continua sendo trabalho em progresso.'},
+ test:{titulo:'Em Teste',resumo:'Verificando se faz o que foi combinado.',
+  itens:['Cenários de aceite sendo executados','Testes exploratórios em busca do que ninguém previu','Defeitos registrados com evidência e passos de reprodução'],
+  nota:'Devolver o item para desenvolvimento é retrabalho e aparece como cauda longa no lead time — não como economia.'},
+ readyHml:{titulo:'Pronto para Homologação',resumo:'Teste CONCLUÍDO.',
+  itens:['Todos os cenários de aceite executados e aprovados',
+   'Testes de regressão executados nos fluxos críticos',
+   'Defeitos críticos e altos corrigidos e reverificados',
+   'Verificações não funcionais mínimas feitas (desempenho, segurança, acessibilidade)',
+   'Evidências de teste registradas e rastreáveis',
+   'Nenhum defeito bloqueante em aberto'],
+  nota:'Homologação não é a segunda rodada de testes. Se o item chega aqui com defeito conhecido, a etapa vira retrabalho disfarçado.'},
+ hml:{titulo:'Em Homologação',resumo:'Validação com quem pediu.',
+  itens:['Área de negócio ou cliente validando em ambiente equivalente ao de produção','Aceite sendo registrado formalmente','Plano de implantação e de retorno sendo confirmado'],
+  nota:'Quem valida aqui deve ser quem descreveu a necessidade — não quem construiu a solução.'},
+ prod:{titulo:'Produção 🚀',resumo:'Definition of Done — o item finalmente gera valor.',
+  itens:['Aceite formal registrado pelo PO ou área de negócio',
+   'Implantado em produção com plano de retorno testado',
+   'Monitoramento e alertas ativos para o novo comportamento',
+   'Documentação atualizada e suporte comunicado',
+   'Nenhuma pendência bloqueante em aberto',
+   'Valor disponível para o usuário final'],
+  nota:'Item que não chegou aqui não gerou valor nenhum — independentemente de quanto esforço consumiu. Isso vale igualmente para o que está a um passo da produção.'}
+};
+function criteriosModal(){
+ const id=state.criterios,c=col(id),k=criterios[id];
+ if(!k)return '';
+ const arr=state.cards.filter(x=>x.col===id&&!x.done);
+ const lim=state.wip[id],semLim=state.day<=state.policies.noLimitsUntil;
+ const fila=c.type==='queue';
+ return `<div class="modal" data-crit-bg><div class="dialog detail"><div class="dhead"><div>
+  <span class="tag">${fila?'FILA':c.type==='active'?'ATIVIDADE':'ENTREGUE'}</span><h3>${k.titulo}</h3>
+  <small class="muted">${k.resumo}</small></div><button class="dclose" data-crit-close>✕</button></div>
+ <div class="dbody">
+  <section><div class="bv"><div><small>ITENS AQUI</small><b>${arr.length}</b></div><div><small>LIMITE DE WIP</small><b>${semLim?'suspenso':(lim||'sem limite')}</b></div></div></section>
+  <section><h6>${fila?'✅ Para um item ENTRAR nesta fila, deve ser verdade que':'🔧 O que acontece nesta etapa'}</h6>
+   <ul class="crit">${k.itens.map(i=>`<li>${i}</li>`).join('')}</ul></section>
+  <section><h6>🎓 Por que isso importa</h6><p>${k.nota}</p></section>
+  ${fila?`<section><small class="note">Este é um <b>critério de pronto</b>: uma política explícita e combinada, não uma opinião de quem está movendo o cartão. Política escrita é o que permite discordar do critério em vez de discordar da pessoa.</small></section>`:''}
+ </div></div></div>`;
+}
+function criteriosTab(){
+ return `<h4 style="margin:6px 0 2px">Critérios de pronto por etapa</h4>
+ <p style="font-size:12px;color:#475569;margin:0 0 10px">O que autoriza um item a atravessar cada fronteira do quadro. Sem isso escrito, "pronto" vira opinião — e cada pessoa move o cartão com um critério diferente.</p>
+ ${order.map(id=>{const c=col(id),k=criterios[id];if(!k)return '';
+  const fila=c.type==='queue'||c.type==='done';
+  return `<div class="critrow ${fila?'is-q':''}">
+   <div class="crith">${fila?'✅':'🔧'} <b>${k.titulo}</b><span class="critr">${k.resumo}</span></div>
+   <ul class="crit">${k.itens.map(i=>`<li>${i}</li>`).join('')}</ul>
+   <div class="critn">🎓 ${k.nota}</div></div>`}).join('')}`;
+}
+/* ===== CONTRATAÇÃO =====
+   Contratar não é um botão de "mais capacidade". Custa taxa de recrutamento, custo diário permanente,
+   e a pessoa nova leva dias para render — consumindo tempo de quem já está produzindo (efeito Brooks). */
+const RAMP_DIAS=6;               // dias até render 100%
+const RAMP_INICIAL=.3;           // produtividade no primeiro dia
+const MENTORIA_DIAS=3;           // dias em que alguém do time perde tempo ensinando
+const MENTORIA_PERDA=.25;        // quanto o padrinho deixa de produzir
+
+const candidatos=[
+ {id:'hugo',name:'Hugo',role:'Dev Sênior',spec:['plan','dev'],custo:1.8,taxa:14,color:'#075985',
+  bio:'Experiente em sistemas críticos. Rende rápido e ajuda no refinamento técnico.',
+  perfil:'Ataca o maior gargalo de esforço do fluxo (Desenvolvimento), mas é o mais caro do mercado.'},
+ {id:'iris',name:'Íris',role:'Dev Pleno',spec:['dev'],custo:1.2,taxa:9,color:'#0891b2',
+  bio:'Foco total em desenvolvimento, sem dispersar em outras etapas.',
+  perfil:'Custo equilibrado para reforçar Desenvolvimento. Não ajuda em nenhuma outra etapa.'},
+ {id:'joana',name:'Joana',role:'QA Sênior',spec:['refine','test','hml'],custo:1.5,taxa:11,color:'#a16207',
+  bio:'Testes e qualidade desde o refinamento de negócio.',
+  perfil:'Reforça Teste e Homologação e ainda participa do Refinamento de Negócio.'},
+ {id:'kaue',name:'Kauê',role:'Analista de Negócio',spec:['refine','plan'],custo:1.1,taxa:7,color:'#6d28d9',
+  bio:'Detalha requisitos e destrava dependências de negócio.',
+  perfil:'Acelera o upstream — útil apenas se a fila estiver represada ANTES do desenvolvimento.'},
+ {id:'lia',name:'Lia',role:'Dev Júnior',spec:['dev'],custo:0.7,taxa:5,color:'#38bdf8',
+  bio:'Início de carreira, aprende rápido.',
+  perfil:'A opção mais barata, mas com a curva de adaptação mais longa e menor produtividade inicial.'}
+];
+// produtividade da pessoa hoje (0 a 1), considerando a curva de adaptação
+function rampa(p){
+ if(!p.desde)return 1;
+ const d=state.day-p.desde;
+ if(d>=RAMP_DIAS)return 1;
+ return RAMP_INICIAL+(1-RAMP_INICIAL)*(d/RAMP_DIAS);
+}
+function emAdaptacao(p){return p.desde&&(state.day-p.desde)<RAMP_DIAS}
+function precisaMentoria(p){return p.desde&&(state.day-p.desde)<MENTORIA_DIAS}
+function custoDiario(){return people.reduce((a,p)=>a+(p.custo||1.2),0)}
+function contratar(id){
+ const cand=candidatos.find(c=>c.id===id);
+ if(!cand||people.find(p=>p.id===id))return;
+ if(state.day>DAYS-RAMP_DIAS){
+  toast('Faltam menos de '+RAMP_DIAS+' dias: a pessoa não teria tempo de render antes do fim. Contratação no fim do projeto é custo sem retorno.','bad');
+  return;
+ }
+ people.push(Object.assign({},cand,{desde:state.day}));
+ state.cost+=cand.taxa;
+ state.contratacoes=(state.contratacoes||[]).concat([{id:cand.id,name:cand.name,role:cand.role,dia:state.day,taxa:cand.taxa,custo:cand.custo}]);
+ log(`Contratação: ${cand.name} (${cand.role}) — taxa de R$ ${cand.taxa}k e R$ ${cand.custo}k/dia a partir de agora.`);
+ toast(`👋 <b>${cand.name}</b> entrou no time. Rende ${Math.round(RAMP_INICIAL*100)}% hoje e chega a 100% em ${RAMP_DIAS} dias — e nos primeiros ${MENTORIA_DIAS} dias consome tempo de quem ensina.`,'good');
+ render();
+}
+function hireTab(){
+ const disp=candidatos.filter(c=>!people.find(p=>p.id===c.id));
+ const contratados=state.contratacoes||[];
+ const cd=custoDiario();
+ const diasRest=DAYS-state.day+1;
+ return `<h4 style="margin:6px 0 2px">Custo atual do time</h4>
+ <div class="scorebox" style="margin-bottom:12px">
+  <div class="scorecard">Pessoas<br><b>${people.length}</b></div>
+  <div class="scorecard">Custo diário<br><b>R$ ${cd.toFixed(1)}k</b></div>
+  <div class="scorecard">Custo até o fim<br><b>R$ ${(cd*diasRest).toFixed(0)}k</b></div>
+  <div class="scorecard">Custo acumulado<br><b>R$ ${Math.round(state.cost)}k</b></div>
+ </div>
+ ${contratados.length?`<div class="hired"><b>Contratações feitas:</b> ${contratados.map(c=>`${c.name} (dia ${c.dia}, taxa ${c.taxa}k + ${c.custo}k/dia)`).join(' · ')}</div>`:''}
+ <p style="font-size:12px;color:#475569;margin:10px 0">Antes de contratar, verifique <b>onde</b> está o gargalo no Aging WIP e no CFD. Adicionar gente na etapa errada aumenta o custo sem mover a vazão — e adicionar gente em um sistema com muito WIP costuma piorar o lead time antes de melhorar.</p>
+ <div class="cands">${disp.map(c=>`
+  <div class="cand">
+   <div class="cand-h"><span class="face-sm" style="background:${c.color}">${c.name[0]}</span>
+    <div><b>${c.name}</b><small>${c.role}</small></div>
+    <div class="cand-p">R$ ${c.custo}k/dia<small>+ ${c.taxa}k de taxa</small></div></div>
+   <div class="cand-b">${c.bio}</div>
+   <div class="cand-s"><b>Especialidade:</b> ${c.spec.map(x=>col(x).name).join(', ')}</div>
+   <div class="cand-r">${c.perfil}</div>
+   <div class="cand-c">Custo até o fim do projeto: <b>R$ ${(c.custo*diasRest+c.taxa).toFixed(0)}k</b> · rende 100% a partir do dia ${state.day+RAMP_DIAS}</div>
+   <button class="primary" data-hire="${c.id}">Contratar ${c.name}</button>
+  </div>`).join('')||'<p class="muted">Nenhum candidato disponível no momento.</p>'}</div>`;
+}
+/* ===== CUSTO DO TIME × VALOR ENTREGUE ===== */
+function custoValorReport(){
+ const valor=state.deliveries.reduce((a,d)=>a+(d.value||0),0);
+ const taxas=(state.contratacoes||[]).reduce((a,c)=>a+c.taxa,0);
+ const diasPessoa=state.history.reduce((a,h)=>a+(h.pessoas||people.length),0);
+ const custoPessoas=state.history.reduce((a,h)=>a+(h.custoDia||custoDiario()),0);
+ const custoTotal=state.cost;
+ const outros=Math.max(0,custoTotal-custoPessoas-taxas);
+ const roi=custoTotal?state.revenue/custoTotal:0;
+ const porItem=state.deliveries.length?custoTotal/state.deliveries.length:0;
+ const porDiaPessoa=diasPessoa?valor/diasPessoa:0;
+ const k=roi>=2?'good':roi>=1.2?'warn':'bad';
+ return {valor,taxas,diasPessoa,custoPessoas,custoTotal,outros,roi,porItem,porDiaPessoa,k};
+}
+function custoValorChart(){
+ const d=state.history;
+ if(d.length<2)return noData();
+ const maxV=Math.max(...d.map(x=>Math.max(x.valorAcum||0,x.cost||0)),1);
+ const a=axes({xMin:d[0].day,xMax:d[d.length-1].day,yMin:0,yMax:maxV*1.08,
+  title:'Custo do time × Valor entregue',xTitle:'dia',yTitle:'R$ mil',fmtY:v=>Math.round(v)+'k'});
+ let s=a.open+a.bg;
+ const ln=(k,cor,dash)=>`<polyline fill="none" stroke="${cor}" stroke-width="2.5" ${dash?'stroke-dasharray="5 4"':''} points="${d.map(x=>`${a.X(x.day)},${a.Y(x[k]||0)}`).join(' ')}"/>`;
+ s+=`<polygon fill="#3ddc9718" points="${d.map(x=>`${a.X(x.day)},${a.Y(x.valorAcum||0)}`).join(' ')} ${a.X(d[d.length-1].day)},${a.Y(0)} ${a.X(d[0].day)},${a.Y(0)}"/>`;
+ s+=ln('valorAcum','#16a34a')+ln('cost','#e03131',1);
+ // marca contratações
+ (state.contratacoes||[]).forEach(c=>{
+  s+=`<line x1="${a.X(c.dia)}" y1="${MT}" x2="${a.X(c.dia)}" y2="${CH-MB}" stroke="#7048e8" stroke-dasharray="3 3"/>`+
+     `<text x="${a.X(c.dia)+3}" y="${MT+11}" fill="#7048e8" font-size="9">+${c.name}</text>`;
+ });
+ // linha de pessoas (eixo próprio, normalizado)
+ const maxP=Math.max(...d.map(x=>x.pessoas||7),1);
+ s+=`<polyline fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="2 3" points="${d.map(x=>`${a.X(x.day)},${a.Y((x.pessoas||7)/maxP*maxV*.25)}`).join(' ')}"/>`;
+ s+=legend([{c:'#16a34a',n:'valor entregue'},{c:'#e03131',n:'custo acumulado'},{c:'#94a3b8',n:'tamanho do time (escala relativa)'}],ML+6,MT+2);
+ return s+a.close;
+}
+function custoValorPanel(){
+ const r=custoValorReport();
+ const rot={good:'✅ Investimento se pagou',warn:'⚠️ Retorno apertado',bad:'🔴 O time custou mais do que gerou'};
+ const contr=state.contratacoes||[];
+ return `<h3>💵 Custo do time × Valor entregue</h3>
+ <div class="scorebox" style="margin-bottom:10px">
+  <div class="scorecard">Custo total<br><b>R$ ${Math.round(r.custoTotal)}k</b></div>
+  <div class="scorecard">Receita realizada<br><b>R$ ${Math.round(state.revenue)}k</b></div>
+  <div class="scorecard">Retorno<br><b>${r.roi.toFixed(2)}×</b></div>
+  <div class="scorecard">Custo por entrega<br><b>R$ ${r.porItem.toFixed(1)}k</b></div>
+  <div class="scorecard">Dias-pessoa<br><b>${r.diasPessoa}</b></div>
+ </div>
+ <div class="cvverdict cv-${r.k}">${rot[r.k]} — cada R$ 1 investido no time devolveu <b>R$ ${r.roi.toFixed(2)}</b> em receita.</div>
+ <table class="dtab" style="margin:12px 0">
+  <tr><td>Custo das pessoas (${r.diasPessoa} dias-pessoa)</td><td><b>R$ ${Math.round(r.custoPessoas)}k</b></td></tr>
+  ${r.taxas?`<tr><td>Taxas de recrutamento (${contr.length} contratação(ões))</td><td><b>R$ ${r.taxas}k</b></td></tr>`:''}
+  ${r.outros>0.5?`<tr><td>Multas e decisões executivas</td><td><b>R$ ${Math.round(r.outros)}k</b></td></tr>`:''}
+  <tr><td><b>Custo total</b></td><td><b>R$ ${Math.round(r.custoTotal)}k</b></td></tr>
+  <tr><td>Valor gerado pelas entregas</td><td><b class="good">R$ ${Math.round(r.valor)}k</b></td></tr>
+  <tr><td>Valor por dia-pessoa investido</td><td><b>R$ ${r.porDiaPessoa.toFixed(1)}k</b></td></tr>
+ </table>
+ <div class="chart" style="margin-bottom:12px">${custoValorChart()}</div>
+ ${contr.length?`<div class="hired"><b>Contratações:</b> ${contr.map(c=>`${c.name} (${c.role}) no dia ${c.dia} — taxa ${c.taxa}k + ${c.custo}k/dia por ${DAYS-c.dia+1} dias = <b>R$ ${(c.taxa+c.custo*(DAYS-c.dia+1)).toFixed(0)}k</b>`).join('<br>')}</div>`
+  :`<div class="hired">Você operou os 30 dias com o time inicial de 7 pessoas, sem contratar. Custo previsível — mas verifique no Aging WIP se alguma etapa ficou permanentemente represada.</div>`}
+ <p style="font-size:11.5px;color:#475569;margin-top:10px">O custo do time entra no score através do lucro (receita − custo). Contratar aumenta a capacidade e o custo ao mesmo tempo: só compensa se a pessoa entrar <b>na etapa que restringe o fluxo</b> e com tempo suficiente para superar a curva de adaptação.</p>`;
+}
+function topBar(){
+ const profit=state.revenue-state.cost;return `<div class="topbar"><div class="brand">FLOW<b>LAB</b><span class="by">por Prof. Ari Amaral</span></div><div class="pill">🎮 <strong>${state.player.name}</strong></div><div class="pill">📅 Dia <strong>${state.day}/${DAYS}</strong></div><div class="pill">🏆 <strong>${state.score}</strong></div><div class="pill">💰 <strong style="color:${profit>=0?'#3ddc97':'#ff5d73'}">R$ ${profit.toFixed(0)}k</strong></div><div class="pill">👥 <strong>${state.subs}</strong> assinantes</div><div class="pill">🧨 Débito <strong>${state.debt}/10</strong></div><button id="endDay" class="primary" style="margin-left:auto">Encerrar o dia 🎲</button></div>`;
+}
+function game(){
+ const lts=state.deliveries.map(x=>x.lt),p50=percentile(lts,50),p85=percentile(lts,85),tp=throughput(),little=tp?committed().length/tp:null;
+ return `${topBar()}<div class="container"><div class="kpis"><div class="kpi"><small>WIP comprometido</small><b>${committed().length}</b></div><div class="kpi"><small>Throughput</small><b>${tp.toFixed(2)}/dia</b></div><div class="kpi"><small>LT previsto (Little)</small><b>${little?little.toFixed(1)+'d':'—'}</b></div><div class="kpi"><small>LT mediana</small><b>${p50==null?'—':p50}d</b></div><div class="kpi"><small>LT P85</small><b>${p85==null?'—':p85}d</b></div></div>
+ ${board()}
+ <div class="tabs">${[['team','👥 Equipe'],['hire','🤝 Contratar'],['metrics','📈 Métricas'],['health','🩺 Saúde'],['policies','📜 Políticas'],['log','📓 Diário'],['rank','🏆 Ranking']].map(([id,t])=>`<button class="tab ${state.tab===id?'active':''}" data-tab="${id}">${t}</button>`).join('')}</div>
+ <div class="tabview">${tabContent()}</div></div>${state.daily?dailyModal():state.event?eventModal():''}${state.detail?cardDetail():''}${state.criterios?criteriosModal():''}`;
+}
+function board(){
+ const tray=`<div class="tray" data-tray><span class="tray-label">👥 EQUIPE</span>${people.map(p=>{
+  const absent=state.absent[p.id]&&state.day<=state.absent[p.id];
+  const cId=state.assign[p.id],cd=cId?state.cards.find(x=>x.id===cId):null;
+  let est='livre',cls='';
+  if(absent){est='ausente'}
+  else if(cd){
+   if(cd.blocked){est='⛔ bloqueado';cls='waiting'}
+   else if(col(cd.col).type!=='active'){est='⏸ em fila';cls='waiting'}
+   else{est='em: '+cd.name.slice(0,14);cls='assigned'}
+  }
+  return `<div class="chip ${absent?'absent':''} ${cls}" data-person="${p.id}" title="${p.role}${cd?' — '+cd.name+' ('+col(cd.col).name+')':''}"><span class="face-sm" style="background:${p.color}">${p.name[0]}</span><span>${p.name}<br><small>${est}</small></span></div>`;
+ }).join('')}</div>`;
+ return `<div id="flowzone">${classLegend()}<div class="hint"><button class="mini" id="openDaily">🗣️ Rever a Daily</button> 🖐️ Arraste um cartão para a próxima coluna para puxá-lo (clique ou duplo clique também avançam). Arraste uma pessoa da bancada para um cartão para alocá-la; arraste o avatar de dentro do cartão para tirá-la ou movê-la a outro item. No celular, pressione e segure.</div>${tray}<div class="board-wrap"><div class="board">${columns.map(c=>{
+  const arr=state.cards.filter(x=>x.col===c.id),lim=state.wip[c.id],over=lim&&arr.length>lim&&state.day>state.policies.noLimitsUntil;
+  return `<div class="col ${over?'over':''}" data-col="${c.id}"><div class="col-head"><div class="group">${c.group}</div><div class="col-title">${c.name}<span class="cinfo" data-crit="${c.id}" title="Critérios de pronto desta etapa">✓</span></div>${c.type!=='done'&&c.id!=='backlog'?`<div class="wipctl"><button class="mini" data-wip="${c.id}" data-delta="-1">−</button><span class="count">${arr.length}/${state.day<=state.policies.noLimitsUntil?'∞':(lim||'∞')}</span><button class="mini" data-wip="${c.id}" data-delta="1">+</button></div>`:`<div class="count" style="margin-top:8px">${arr.length} itens</div>`}</div><div class="card-list">${arr.map(card).join('')}</div></div>`
+ }).join('')}</div></div></div>`;
+}
+function card(c){
+ const s=service[c.type],stage=col(c.col).stage,age=c.commit?state.day-c.commit+1:null,assigned=people.filter(p=>state.assign[p.id]===c.id);
+ return `<div class="work ${s.class} ${c.blocked?'blocked':''}" data-card="${c.id}" style="border-left-color:${s.cor};background:${s.fundo}"><h5>${s.icon} ${c.name}<span class="info" data-info="${c.id}" title="Ver detalhes da funcionalidade">🔍</span></h5><div class="tags"><span class="tag">${s.label}</span>${c.subs?`<span class="tag">👥 +${c.subs}</span>`:''}${(c.type==='debt')?`<span class="tag tag-tech">🛡️ −2 débito</span>`:(c.type==='bug')?`<span class="tag tag-tech">⚠️ sem receita</span>`:`<span class="tag tag-bv">💎 R$ ${Math.round(businessValue(c))}k</span>`}${c.bonus?`<span class="tag tag-val">💰 +${c.bonus}k</span>`:''}${c.dep?`<span class="tag tag-dep">🔗 dep.</span>`:''}${stage?`<span class="tag">falta ${c.rest[stage]}</span>`:''}${age?`<span class="tag">idade ${age}d</span>`:''}${c.blocked?`<span class="tag">⛔ ${c.blocked}d</span>`:''}${c.due?`<span class="tag">até d${c.due}</span>`:''}</div>${assigned.length?`<div class="people">${assigned.map(p=>`<span class="avatar" data-person="${p.id}" data-from="card" title="${p.name} — arraste para tirar ou realocar" style="background:${p.color}">${p.name[0]}</span>`).join('')}</div>`:''}</div>`;
+}
+function tabContent(){
+ if(state.tab==='team')return teamTab();
+ if(state.tab==='metrics')return metricsTab();
+ if(state.tab==='health')return healthTab();
+ if(state.tab==='hire')return hireTab();
+ if(state.tab==='policies')return policyTab();
+ if(state.tab==='log')return `<div class="timeline">${state.logs.length?state.logs.map(x=>`<div class="log"><b>Dia ${x.day}</b> — ${x.text}</div>`).join(''):'Nenhum registro ainda.'}</div>`;
+ if(state.tab==='rank')return rankTab();
+}
+function teamTab(){
+ const activeCards=state.cards.filter(c=>col(c.col).type==='active'&&!c.done);
+ return `<p style="font-size:12px;color:#64748b">Alocar pessoas é uma decisão de fluxo. Especialistas produzem mais em sua área, mas qualquer pessoa pode ajudar — exceto quando uma política de silo estiver ativa.</p><div class="team-grid">${people.map(p=>{
+  const absent=state.absent[p.id]&&state.day<=state.absent[p.id];
+  return `<div class="member" style="opacity:${absent?0.55:1}"><div class="face" style="background:${p.color}">${p.name[0]}</div><div style="flex:1"><b>${p.name}</b> · ${p.role}<br><small>${absent?'Ausente hoje':p.bio}</small><select data-assign="${p.id}" ${absent?'disabled':''}><option value="">— sem alocação —</option>${activeCards.filter(c=>!(state.day<=state.policies.siloUntil)&&true||p.spec.includes(c.col)).map(c=>`<option value="${c.id}" ${state.assign[p.id]===c.id?'selected':''}>${p.spec.includes(c.col)?'⭐ ':''}${c.name} (${col(c.col).name})</option>`).join('')}</select></div></div>`
+ }).join('')}</div>`;
+}
+/* ===== Motor de gráficos: escalas, eixos com valores e rótulos ===== */
+const CW=660,CH=290,ML=54,MR=22,MT=30,MB=48;
+function niceStep(range,target){
+ const raw=range/Math.max(1,target),mag=Math.pow(10,Math.floor(Math.log10(raw||1)));
+ const n=raw/mag,s=n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10;
+ return s*mag;
+}
+function ticksFor(min,max,target){
+ if(!(max>min))max=min+1;
+ const step=niceStep(max-min,target||5),start=Math.ceil(min/step)*step,out=[];
+ for(let v=start;v<=max+step*1e-6;v+=step)out.push(Math.round(v*1e6)/1e6);
+ return out.length?out:[min,max];
+}
+function axes(o){
+ const xMin=o.xMin,xMax=(o.xMax===o.xMin?o.xMin+1:o.xMax);
+ const yMin=o.yMin,yMax=(o.yMax===o.yMin?o.yMin+1:o.yMax);
+ const X=v=>ML+((v-xMin)/(xMax-xMin))*(CW-ML-MR);
+ const Y=v=>CH-MB-((v-yMin)/(yMax-yMin))*(CH-MT-MB);
+ const xt=o.xTicks||ticksFor(xMin,xMax,6),yt=o.yTicks||ticksFor(yMin,yMax,5);
+ const fx=o.fmtX||(v=>String(Math.round(v))),fy=o.fmtY||(v=>String(Math.round(v)));
+ let g='';
+ yt.forEach(v=>{if(v<yMin-1e-9||v>yMax+1e-9)return;
+  g+=`<line x1="${ML}" y1="${Y(v)}" x2="${CW-MR}" y2="${Y(v)}" stroke="#e6edf6"/><text x="${ML-8}" y="${Y(v)+4}" text-anchor="end" fill="#64748b" font-size="10">${fy(v)}</text>`});
+ xt.forEach(v=>{if(v<xMin-1e-9||v>xMax+1e-9)return;
+  g+=`<line x1="${X(v)}" y1="${MT}" x2="${X(v)}" y2="${CH-MB}" stroke="#f0f5fa"/><text x="${X(v)}" y="${CH-MB+16}" text-anchor="middle" fill="#64748b" font-size="10">${fx(v)}</text>`});
+ g+=`<line x1="${ML}" y1="${CH-MB}" x2="${CW-MR}" y2="${CH-MB}" stroke="#94a3b8"/><line x1="${ML}" y1="${MT}" x2="${ML}" y2="${CH-MB}" stroke="#94a3b8"/>`;
+ if(o.title)g+=`<text x="${ML}" y="16" fill="#0f172a" font-size="12" font-weight="700">${o.title}</text>`;
+ if(o.xTitle)g+=`<text x="${(ML+CW-MR)/2}" y="${CH-8}" text-anchor="middle" fill="#475569" font-size="10">${o.xTitle}</text>`;
+ if(o.yTitle)g+=`<text transform="translate(14,${(MT+CH-MB)/2}) rotate(-90)" text-anchor="middle" fill="#475569" font-size="10">${o.yTitle}</text>`;
+ return {X,Y,bg:g,open:`<svg viewBox="0 0 ${CW} ${CH}" class="cx" preserveAspectRatio="xMidYMid meet">`,close:'</svg>'};
+}
+function legend(items,x,y){
+ return items.map((it,i)=>`<g transform="translate(${x},${y+i*14})"><rect width="10" height="10" rx="2" fill="${it.c}"/><text x="15" y="9" fill="#475569" font-size="10">${it.n}</text></g>`).join('');
+}
+const noData=m=>`<div class="nodata">${m||'Sem dados suficientes ainda.'}</div>`;
+
+/* ===== 1. AGING WIP — o que exige ação hoje ===== */
+function agingChart(){
+ const wip=committed().filter(c=>!c.done&&c.col!=='prod');
+ const cols=columns.filter(c=>c.id!=='backlog'&&c.id!=='prod');
+ if(!wip.length)return noData('Nenhum item em progresso.');
+ const lts=state.deliveries.map(d=>d.lt),p50=percentile(lts,50),p85=percentile(lts,85);
+ const maxAge=Math.max(state.sle+2,...wip.map(c=>state.day-c.commit+1));
+ const a=axes({xMin:0,xMax:cols.length,yMin:0,yMax:maxAge*1.1,title:'Aging WIP — idade de cada item em progresso',
+  yTitle:'idade (dias)',xTicks:[],fmtY:v=>v+'d'});
+ let s=a.open+a.bg;
+ // faixas de referência
+ const band=(v,cor,txt)=>v?`<line x1="${ML}" y1="${a.Y(v)}" x2="${CW-MR}" y2="${a.Y(v)}" stroke="${cor}" stroke-dasharray="5 4" stroke-width="1.5"/><text x="${CW-MR-2}" y="${a.Y(v)-4}" text-anchor="end" fill="${cor}" font-size="10">${txt}</text>`:'';
+ s+=band(state.sle,'#e03131','SLE '+state.sle+'d');
+ s+=band(p85,'#f59f00','P85 '+p85+'d');
+ s+=band(p50,'#2563eb','P50 '+p50+'d');
+ cols.forEach((cl,i)=>{
+  const cx=a.X(i+0.5);
+  s+=`<text x="${cx}" y="${CH-MB+15}" text-anchor="middle" fill="#64748b" font-size="9">${cl.name.replace('Pronto para','P/').replace('Em ','').slice(0,11)}</text>`;
+  if(i>0)s+=`<line x1="${a.X(i)}" y1="${MT}" x2="${a.X(i)}" y2="${CH-MB}" stroke="#eef3f9"/>`;
+  const itens=wip.filter(c=>c.col===cl.id);
+  itens.forEach((c,k)=>{
+   const age=state.day-c.commit+1;
+   const jitter=(k-(itens.length-1)/2)*9;
+   const cor=c.blocked?'#e03131':age>state.sle?'#f59f00':cl.type==='active'?'#2563eb':'#94a3b8';
+   s+=`<circle cx="${cx+jitter}" cy="${a.Y(age)}" r="6" fill="${cor}" stroke="#fff" stroke-width="1.5"><title>${c.name} — ${age} dias em ${cl.name}${c.blocked?' (BLOQUEADO)':''}</title></circle>`;
+  });
+ });
+ s+=legend([{c:'#2563eb',n:'em atividade'},{c:'#94a3b8',n:'em fila'},{c:'#f59f00',n:'acima do SLE'},{c:'#e03131',n:'bloqueado'}],ML+6,MT+4);
+ return s+a.close;
+}
+
+/* ===== 2. CFD ===== */
+function cfdChart(){
+ const data=state.history;
+ if(data.length<2)return noData();
+ const keys=[['prod','Produção','#16a34a'],['hml','Homologação','#9333ea'],['test','Teste','#f59f00'],['dev','Desenvolvimento','#2563eb'],['upstream','Upstream','#ec4899'],['backlog','Backlog','#94a3b8']];
+ const tot=data.map(d=>keys.reduce((s,[k])=>s+(d[k]||0),0)),max=Math.max(...tot,1);
+ const a=axes({xMin:data[0].day,xMax:data[data.length-1].day,yMin:0,yMax:max*1.05,
+  title:'CFD — Diagrama de Fluxo Cumulativo',xTitle:'dia',yTitle:'itens (acumulado)'});
+ let s=a.open+a.bg,base=new Array(data.length).fill(0);
+ keys.forEach(([k,,cor])=>{
+  const top=data.map((d,i)=>base[i]+(d[k]||0));
+  const up=top.map((v,i)=>`${a.X(data[i].day)},${a.Y(v)}`);
+  const low=base.map((v,i)=>`${a.X(data[i].day)},${a.Y(v)}`).reverse();
+  s+=`<polygon points="${up.concat(low).join(' ')}" fill="${cor}" fill-opacity=".72"/>`;
+  base=top;
+ });
+ // leitura geométrica: WIP = distância vertical, LT ≈ distância horizontal
+ const last=data.length-1,d=data[last];
+ const wipTop=(d.upstream||0)+(d.dev||0)+(d.test||0)+(d.hml||0)+(d.prod||0),wipBot=d.prod||0;
+ s+=`<line x1="${a.X(d.day)-6}" y1="${a.Y(wipTop)}" x2="${a.X(d.day)-6}" y2="${a.Y(wipBot)}" stroke="#0f172a" stroke-width="2"/>`;
+ s+=`<text x="${a.X(d.day)-10}" y="${(a.Y(wipTop)+a.Y(wipBot))/2}" text-anchor="end" fill="#0f172a" font-size="10">WIP ${wipTop-wipBot}</text>`;
+ s+=legend(keys.map(([,n,c])=>({c,n})),ML+6,MT+2);
+ return s+a.close;
+}
+
+/* ===== 3. Scatterplot de Lead Time com percentis ===== */
+function scatterChart(){
+ const ds=state.deliveries.filter(d=>d.lt!=null);
+ if(!ds.length)return noData();
+ const lts=ds.map(d=>d.lt),p50=percentile(lts,50),p85=percentile(lts,85),p95=percentile(lts,95);
+ const a=axes({xMin:1,xMax:Math.max(DAYS,state.day),yMin:0,yMax:Math.max(...lts,state.sle)*1.15,
+  title:'Lead Time por entrega — observe a variabilidade, não a média',xTitle:'dia da entrega',yTitle:'lead time (dias)',fmtY:v=>v+'d'});
+ let s=a.open+a.bg;
+ const ln=(v,cor,txt)=>v==null?'':`<line x1="${ML}" y1="${a.Y(v)}" x2="${CW-MR}" y2="${a.Y(v)}" stroke="${cor}" stroke-dasharray="5 4"/><text x="${CW-MR-2}" y="${a.Y(v)-3}" text-anchor="end" fill="${cor}" font-size="10">${txt}</text>`;
+ s+=ln(state.sle,'#e03131','SLE '+state.sle+'d');
+ s+=ln(p95,'#7c3aed','P95 '+p95+'d');
+ s+=ln(p85,'#f59f00','P85 '+p85+'d');
+ s+=ln(p50,'#2563eb','P50 '+p50+'d');
+ const cor=Object.fromEntries(Object.entries(service).map(([k,v])=>[k,v.cor]));
+ ds.forEach(d=>{s+=`<circle cx="${a.X(d.day)}" cy="${a.Y(d.lt)}" r="5" fill="${cor[d.type]||'#845ef7'}" fill-opacity=".85" stroke="#fff"><title>${d.name}: ${d.lt} dias (dia ${d.day})</title></circle>`});
+ return s+a.close;
+}
+
+/* ===== 4. Histograma de Lead Time — a forma da distribuição ===== */
+function histogramChart(){
+ const lts=state.deliveries.map(d=>d.lt).filter(v=>v!=null);
+ if(lts.length<3)return noData('Poucas entregas para uma distribuição.');
+ const max=Math.max(...lts),bins=new Array(max+1).fill(0);
+ lts.forEach(v=>bins[v]++);
+ const maxC=Math.max(...bins,1),p85=percentile(lts,85);
+ const a=axes({xMin:0,xMax:max+1,yMin:0,yMax:maxC*1.2,title:'Distribuição de Lead Time',
+  xTitle:'lead time (dias)',yTitle:'nº de entregas',fmtY:v=>String(Math.round(v))});
+ let s=a.open+a.bg;
+ const bw=(a.X(1)-a.X(0))*0.8;
+ bins.forEach((n,v)=>{if(!n)return;
+  const x=a.X(v)+ (a.X(1)-a.X(0))*0.1, y=a.Y(n), hh=a.Y(0)-y;
+  s+=`<rect x="${x}" y="${y}" width="${bw}" height="${hh}" rx="2" fill="${v<=state.sle?'#3ddc97':'#f59f00'}"><title>${n} entrega(s) com ${v} dias</title></rect>`;
+  s+=`<text x="${x+bw/2}" y="${y-3}" text-anchor="middle" fill="#475569" font-size="9">${n}</text>`});
+ if(p85!=null)s+=`<line x1="${a.X(p85+0.5)}" y1="${MT}" x2="${a.X(p85+0.5)}" y2="${CH-MB}" stroke="#f59f00" stroke-dasharray="5 4"/><text x="${a.X(p85+0.5)+3}" y="${MT+10}" fill="#f59f00" font-size="10">P85</text>`;
+ s+=`<line x1="${a.X(state.sle+0.5)}" y1="${MT}" x2="${a.X(state.sle+0.5)}" y2="${CH-MB}" stroke="#e03131" stroke-dasharray="5 4"/><text x="${a.X(state.sle+0.5)+3}" y="${MT+22}" fill="#e03131" font-size="10">SLE</text>`;
+ return s+a.close;
+}
+
+/* ===== 5. Throughput por dia ===== */
+function throughputChart(){
+ const data=state.history;
+ if(data.length<2)return noData();
+ const vals=data.map(d=>d.doneDay||0),max=Math.max(...vals,1);
+ const media=vals.reduce((x,y)=>x+y,0)/vals.length;
+ const a=axes({xMin:data[0].day,xMax:data[data.length-1].day,yMin:0,yMax:max+1,
+  title:'Throughput diário — capacidade de entrega',xTitle:'dia',yTitle:'itens entregues',
+  yTicks:ticksFor(0,max+1,Math.min(5,max+1))});
+ let s=a.open+a.bg;
+ const bw=Math.max(3,(CW-ML-MR)/Math.max(1,data.length)*0.65);
+ data.forEach(d=>{const v=d.doneDay||0;if(!v)return;
+  s+=`<rect x="${a.X(d.day)-bw/2}" y="${a.Y(v)}" width="${bw}" height="${a.Y(0)-a.Y(v)}" rx="2" fill="#20c997"><title>dia ${d.day}: ${v} entrega(s)</title></rect>`});
+ s+=`<line x1="${ML}" y1="${a.Y(media)}" x2="${CW-MR}" y2="${a.Y(media)}" stroke="#0f172a" stroke-dasharray="4 3"/><text x="${CW-MR-2}" y="${a.Y(media)-4}" text-anchor="end" fill="#0f172a" font-size="10">média ${media.toFixed(2)}/dia</text>`;
+ return s+a.close;
+}
+
+/* ===== 6. WIP com limite total ===== */
+function wipChart(){
+ const data=state.history;
+ if(data.length<2)return noData();
+ const vals=data.map(d=>d.wip||0),max=Math.max(...vals,1);
+ const a=axes({xMin:data[0].day,xMax:data[data.length-1].day,yMin:0,yMax:max*1.15,
+  title:'WIP comprometido ao longo do tempo',xTitle:'dia',yTitle:'itens em progresso'});
+ let s=a.open+a.bg;
+ s+=`<polyline fill="none" stroke="#7048e8" stroke-width="2.5" points="${data.map(d=>`${a.X(d.day)},${a.Y(d.wip||0)}`).join(' ')}"/>`;
+ data.forEach(d=>{s+=`<circle cx="${a.X(d.day)}" cy="${a.Y(d.wip||0)}" r="3" fill="#7048e8"><title>dia ${d.day}: WIP ${d.wip}</title></circle>`});
+ const med=vals.reduce((x,y)=>x+y,0)/vals.length;
+ s+=`<line x1="${ML}" y1="${a.Y(med)}" x2="${CW-MR}" y2="${a.Y(med)}" stroke="#0f172a" stroke-dasharray="4 3"/><text x="${CW-MR-2}" y="${a.Y(med)-4}" text-anchor="end" fill="#0f172a" font-size="10">média ${med.toFixed(1)}</text>`;
+ return s+a.close;
+}
+
+/* ===== 7. Monte Carlo — previsão para compromissos ===== */
+function monteCarlo(){
+ if(state._mc&&state._mc.day===state.day)return state._mc.data;
+ const amostras=state.history.map(s=>s.doneDay||0);
+ const diasRestantes=Math.max(0,DAYS-state.day+1);
+ if(amostras.length<3||diasRestantes<1){state._mc={day:state.day,data:null};return null}
+ const res=[];
+ for(let t=0;t<3000;t++){let n=0;for(let d=0;d<diasRestantes;d++)n+=amostras[Math.floor(Math.random()*amostras.length)];res.push(n)}
+ res.sort((x,y)=>x-y);
+ const q=p=>res[Math.min(res.length-1,Math.floor(res.length*p/100))];
+ // Para previsão de QUANTIDADE, o compromisso seguro usa o percentil BAIXO:
+ // 85% das simulações entregam pelo menos q(15). O percentil alto é o cenário otimista.
+ const data={res,diasRestantes,mediana:q(50),conf85:q(15),conf95:q(5),otimista:q(85)};
+ state._mc={day:state.day,data};return data;
+}
+function monteCarloChart(){
+ const mc=monteCarlo();
+ if(!mc)return noData('Precisa de mais dias de histórico para simular.');
+ const max=Math.max(...mc.res),min=Math.min(...mc.res),bins={};
+ mc.res.forEach(v=>bins[v]=(bins[v]||0)+1);
+ const keys=Object.keys(bins).map(Number).sort((x,y)=>x-y);
+ const maxC=Math.max(...keys.map(k=>bins[k]));
+ const a=axes({xMin:min-0.5,xMax:max+1.5,yMin:0,yMax:maxC*1.25,
+  title:`Monte Carlo — quantos itens ainda entregam em ${mc.diasRestantes} dia(s)`,
+  xTitle:'itens adicionais entregues até o fim',yTitle:'frequência (3000 simulações)',fmtY:v=>''});
+ let s=a.open+a.bg;
+ const bw=Math.max(4,(a.X(1)-a.X(0))*0.78);
+ keys.forEach(k=>{const n=bins[k],y=a.Y(n);
+  const cor=k<mc.conf85?'#94a3b8':k<=mc.mediana?'#2563eb':'#3ddc97';
+  s+=`<rect x="${a.X(k)-bw/2}" y="${y}" width="${bw}" height="${a.Y(0)-y}" fill="${cor}" fill-opacity=".85" rx="2"><title>${k} itens em ${(n/mc.res.length*100).toFixed(1)}% das simulações</title></rect>`});
+ const mark=(v,cor,txt,dy)=>`<line x1="${a.X(v)}" y1="${MT}" x2="${a.X(v)}" y2="${CH-MB}" stroke="${cor}" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${a.X(v)+3}" y="${MT+(dy||10)}" fill="${cor}" font-size="10">${txt}</text>`;
+ s+=mark(mc.conf85,'#e03131','85% de confiança: ≥ '+mc.conf85,10);
+ s+=mark(mc.mediana,'#2563eb','mediana: '+mc.mediana,24);
+ s+=`<text x="${ML+4}" y="${CH-MB-6}" fill="#475569" font-size="10">Compromissos vão pelo ≥ ${mc.conf85} (85% de confiança), não pela mediana de ${mc.mediana}.</text>`;
+ return s+a.close;
+}
+
+/* ===== 8. Eficiência de fluxo ===== */
+function flowEffChart(){
+ const ds=state.deliveries.filter(d=>d.fe!=null);
+ if(ds.length<2)return noData();
+ const a=axes({xMin:1,xMax:Math.max(DAYS,state.day),yMin:0,yMax:100,
+  title:'Eficiência de fluxo por entrega — quanto foi trabalho, quanto foi espera',
+  xTitle:'dia da entrega',yTitle:'eficiência (%)',fmtY:v=>v+'%',yTicks:[0,25,50,75,100]});
+ let s=a.open+a.bg;
+ s+=`<rect x="${ML}" y="${a.Y(100)}" width="${CW-ML-MR}" height="${a.Y(40)-a.Y(100)}" fill="#3ddc9718"/>`;
+ s+=`<line x1="${ML}" y1="${a.Y(40)}" x2="${CW-MR}" y2="${a.Y(40)}" stroke="#3ddc97" stroke-dasharray="5 4"/><text x="${CW-MR-2}" y="${a.Y(40)-4}" text-anchor="end" fill="#16a34a" font-size="10">40% — referência saudável</text>`;
+ s+=`<polyline fill="none" stroke="#0ca678" stroke-width="2" points="${ds.map(d=>`${a.X(d.day)},${a.Y(d.fe*100)}`).join(' ')}"/>`;
+ ds.forEach(d=>{s+=`<circle cx="${a.X(d.day)}" cy="${a.Y(d.fe*100)}" r="4" fill="${d.fe>=.4?'#0ca678':'#f59f00'}" stroke="#fff"><title>${d.name}: ${(d.fe*100).toFixed(0)}% de eficiência</title></circle>`});
+ return s+a.close;
+}
+
+/* ===== 9. Valor acumulado ===== */
+function valueChart(){
+ const data=state.history;
+ if(data.length<2)return noData();
+ const maxV=Math.max(...data.map(d=>Math.max(d.revenue||0,d.cost||0)),1);
+ const minP=Math.min(0,...data.map(d=>d.profit||0));
+ const a=axes({xMin:data[0].day,xMax:data[data.length-1].day,yMin:Math.min(minP*1.15,0),yMax:maxV*1.08,
+  title:'Valor acumulado — receita, custo e lucro',xTitle:'dia',yTitle:'R$ mil',fmtY:v=>Math.round(v)+'k'});
+ let s=a.open+a.bg;
+ const zero=a.Y(0);
+ s+=`<line x1="${ML}" y1="${zero}" x2="${CW-MR}" y2="${zero}" stroke="#94a3b8" stroke-dasharray="2 3"/>`;
+ s+=`<polygon fill="#3ddc9722" points="${a.X(data[0].day)},${zero} ${data.map(d=>`${a.X(d.day)},${a.Y(d.profit||0)}`).join(' ')} ${a.X(data[data.length-1].day)},${zero}"/>`;
+ let be=null;
+ for(let i=1;i<data.length;i++)if((data[i-1].profit||0)<0&&(data[i].profit||0)>=0){be=data[i];break}
+ if(be)s+=`<line x1="${a.X(be.day)}" y1="${MT}" x2="${a.X(be.day)}" y2="${CH-MB}" stroke="#16a34a" stroke-dasharray="3 3"/><text x="${a.X(be.day)+4}" y="${MT+12}" fill="#16a34a" font-size="10">break-even d${be.day}</text>`;
+ const ln=(k,cor,dash)=>`<polyline fill="none" stroke="${cor}" stroke-width="2.5" ${dash?'stroke-dasharray="5 4"':''} points="${data.map(d=>`${a.X(d.day)},${a.Y(d[k]||0)}`).join(' ')}"/>`;
+ s+=ln('revenue','#16a34a')+ln('cost','#e03131',1)+ln('profit','#2563eb');
+ s+=legend([{c:'#16a34a',n:'receita'},{c:'#e03131',n:'custo'},{c:'#2563eb',n:'lucro'}],ML+6,MT+2);
+ return s+a.close;
+}
+
+/* ===== 10. Valor por classe de serviço ===== */
+function valueByTypeChart(){
+ const d=state.deliveries.filter(x=>x.value!=null);
+ const g=Object.fromEntries(Object.entries(service).map(([k,v])=>[k,{n:v.label,c:v.cor}]));
+ const tot={},qtd={};d.forEach(x=>{tot[x.type]=(tot[x.type]||0)+x.value;qtd[x.type]=(qtd[x.type]||0)+1});
+ const keys=Object.keys(g).filter(k=>qtd[k]);
+ if(!keys.length)return noData('Nenhuma entrega registrada ainda.');
+ const max=Math.max(...keys.map(k=>tot[k]),1);
+ const a=axes({xMin:0,xMax:keys.length,yMin:0,yMax:max*1.2,title:'Valor gerado por classe de serviço',
+  yTitle:'R$ mil',xTicks:[],fmtY:v=>Math.round(v)+'k'});
+ let s=a.open+a.bg;
+ const bw=(a.X(1)-a.X(0))*0.55;
+ keys.forEach((k,i)=>{const cx=a.X(i+0.5),v=tot[k],y=a.Y(v);
+  s+=`<rect x="${cx-bw/2}" y="${y}" width="${bw}" height="${a.Y(0)-y}" rx="3" fill="${g[k].c}"><title>${g[k].n}: R$ ${Math.round(v)}k em ${qtd[k]} entrega(s)</title></rect>`;
+  s+=`<text x="${cx}" y="${y-5}" text-anchor="middle" fill="#0f172a" font-size="10" font-weight="700">${Math.round(v)}k</text>`;
+  s+=`<text x="${cx}" y="${CH-MB+15}" text-anchor="middle" fill="#64748b" font-size="10">${g[k].n}</text>`;
+  s+=`<text x="${cx}" y="${CH-MB+27}" text-anchor="middle" fill="#94a3b8" font-size="9">${qtd[k]} item(s)</text>`});
+ return s+a.close;
+}
+function metricsTab(){
+ const lts=state.deliveries.map(x=>x.lt),p50=percentile(lts,50),p85=percentile(lts,85),p95=percentile(lts,95),fes=state.deliveries.map(x=>x.fe).filter(x=>x!=null);
+ return `<div class="scorebox"><div class="scorecard">Média LT<br><b>${mean(lts)==null?'—':mean(lts).toFixed(1)}d</b></div><div class="scorecard">Mediana P50<br><b>${p50==null?'—':p50}d</b></div><div class="scorecard">P85<br><b>${p85==null?'—':p85}d</b></div><div class="scorecard">P95<br><b>${p95==null?'—':p95}d</b></div><div class="scorecard">Eficiência de fluxo<br><b>${fes.length?(mean(fes)*100).toFixed(0)+'%':'—'}</b></div></div>
+ <div style="margin:12px 0">SLE: <button class="mini" id="sleMinus">−</button> <b>${state.sle} dias</b> <button class="mini" id="slePlus">+</button></div>
+ <div class="charts"><div class="chart"><h4>🔥 Aging WIP</h4><p>O <b>único gráfico que responde "o que eu faço agora"</b>. Cada bolinha é um item em progresso e sua idade. Aja no que está subindo em direção ao SLE — não no que acabou de entrar.</p>${agingChart()}</div><div class="chart"><h4>📊 CFD</h4><p>Bandas que engordam indicam acúmulo. A distância vertical é o WIP; a horizontal, o tempo aproximado de travessia.</p>${cfdChart()}</div><div class="chart"><h4>⏱️ Lead Time por entrega</h4><p>Cada ponto é uma entrega. Comprometa-se pelo P85, nunca pela média — a média mente na cauda.</p>${scatterChart()}</div><div class="chart"><h4>📈 Distribuição de Lead Time</h4><p>A forma importa: dois picos indicam classes de trabalho diferentes tratadas como uma só.</p>${histogramChart()}</div><div class="chart"><h4>🎲 Previsão Monte Carlo</h4><p>Projeção a partir do seu próprio histórico de throughput. Use o P85 para assumir compromissos.</p>${monteCarloChart()}</div><div class="chart"><h4>🚀 Throughput diário</h4><p>Capacidade real de entrega. Variabilidade alta aqui vira imprevisibilidade lá na frente.</p>${throughputChart()}</div><div class="chart"><h4>🧮 WIP ao longo do tempo</h4><p>Pouco WIP com throughput estável significa lead time curto — é a Lei de Little agindo.</p>${wipChart()}</div><div class="chart"><h4>⚡ Eficiência de fluxo</h4><p>Quanto do lead time foi trabalho e quanto foi espera. Abaixo de 40%, o gargalo é fila, não capacidade.</p>${flowEffChart()}</div><div class="chart"><h4>💰 Valor acumulado</h4><p>Receita sobe em degraus (cobrança a cada 3 dias); o custo da equipe é uma reta implacável. O cruzamento é o break-even.</p>${valueChart()}</div><div class="chart"><h4>💵 Valor por classe de serviço</h4><p>Onde o valor realmente apareceu. Compare com o esforço que cada classe consumiu.</p>${valueByTypeChart()}</div></div>`;
+}
+function healthTab(){
+ const lts=state.deliveries.map(x=>x.lt),p50=percentile(lts,50),p85=percentile(lts,85),tp=throughput(),little=tp?committed().length/tp:null,diags=[];
+ const ratio=p50&&p85?p85/p50:null;
+ if(ratio!=null)diags.push([ratio<=1.8?'good':ratio<=2.8?'warn':'bad',`Variabilidade P85/P50 = ${ratio.toFixed(1)}`,ratio<=1.8?'Cauda curta: previsibilidade saudável.':'Cauda longa: investigue bloqueios, tamanhos e filas.']);
+ const oldest=Math.max(0,...committed().map(c=>state.day-c.commit+1));
+ diags.push([oldest<=state.sle?'good':oldest<=state.sle*1.4?'warn':'bad',`Item mais velho: ${oldest} dias`,oldest>state.sle?'Há trabalho em risco de romper o SLE. Enxameie antes de puxar mais.':'Aging sob controle.']);
+ diags.push([state.debt<=2?'good':state.debt<=5?'warn':'bad',`Débito técnico: ${state.debt}/10`,state.debt>=5?'A capacidade está sendo drenada por manutenção e bugs.':'Risco técnico razoavelmente controlado.']);
+ if(little)diags.push([little<=state.sle?'good':'warn',`Lead Time previsto por Little: ${little.toFixed(1)} dias`,little>state.sle?'WIP atual e throughput apontam para atrasos futuros.':'Capacidade e WIP estão coerentes com o SLE.']);
+ return `<div class="health">${diags.map(d=>`<div class="diag ${d[0]}"><b>${d[1]}</b>${d[2]}</div>`).join('')}</div><h3 style="margin:18px 0 2px">🎓 Banca de especialistas</h3><p style="font-size:12px;color:#475569;margin:0 0 10px">Análise ao vivo dos seus números. O relatório completo, com conceitos e bibliografia, aparece ao fim da partida.</p>${expertPanel(false)}`;
+}
+function policyTab(){
+ return `${criteriosTab()}<hr style="border:0;border-top:1px solid #e2e8f0;margin:18px 0"/>${classPolicyTable()}<h3 style="margin-top:18px">Políticas explícitas</h3><ol><li>O trabalho só avança se a próxima etapa tiver capacidade.</li><li>O compromisso começa em <b>Pronto para Desenvolvimento</b>.</li><li>Expedites e bugs podem furar WIP, mas geram risco sistêmico.</li><li>Especialistas rendem mais; colaboração reduz filas.</li><li>Débito técnico reduz capacidade e aumenta a chance de incidentes.</li><li>O SLE deve ser calibrado pelos dados, preferencialmente próximo ao P85.</li></ol><p><b>Regra de ouro:</b> pare de começar e comece a terminar.</p>`;
+}
+function rankTab(){
+ const rows=lerRanking().sort((a,b)=>b.score-a.score).slice(0,20);
+ return `<table class="ranktable"><tr><th>#</th><th>Aluno</th><th>Turma</th><th>Score</th><th>Rank</th><th>Lucro</th></tr>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${r.name}</td><td>${r.class||'—'}</td><td>${r.score}</td><td>${r.rank}</td><td>R$ ${r.profit}k</td></tr>`).join('')}</table>`;
+}
+function eventModal(){
+ const e=state.event;return `<div class="modal"><div class="dialog"><div class="speech"><div class="portrait">${e.avatar}</div><div class="bubble"><b>${e.person} · ${e.role}</b><h3>${e.title}</h3><p>${e.text}</p>${e.choices.map((c,i)=>`<button class="choice" data-choice="${i}"><b>${c.label}</b><br><small>${c.desc}</small></button>`).join('')}</div></div></div></div>`;
+}
+function makeEvent(){
+ const pool=[
+ {person:'Carlos',role:'CFO',avatar:'💼',title:'Cliente estratégico ameaçando sair',text:'Chegou uma urgência. O cliente promete receita relevante, mas quer prioridade imediata.',choices:[
+  {label:'Criar Expedite',desc:'Entra direto em Pronto para Dev. Alto valor, alto impacto.',act:()=>{state.cards.push(item('expedite',state.day));log('Expedite criado por pressão do cliente.')}} ,
+  {label:'Negociar prazo e manter política',desc:'Ganha estabilidade, mas perde R$8k de oportunidade.',act:()=>{state.revenue-=8;log('Prazo negociado para proteger o fluxo.')}}]},
+ {person:'Sofia',role:'Diretora',avatar:'🏛️',title:'Suspender limites de WIP por cinco dias',text:'A diretoria acredita que começar mais trabalho acelerará o projeto.',choices:[
+  {label:'Aceitar a política',desc:'Limites ficam inativos por cinco dias.',act:()=>{state.policies.noLimitsUntil=state.day+5;log('Política sem limites de WIP ativada.')}} ,
+  {label:'Apresentar os dados e manter limites',desc:'Custa capital político, mas preserva o sistema.',act:()=>{state.cost+=5;log('Limites preservados após negociação executiva.')}}]},
+ {person:'Paula',role:'RH',avatar:'👩‍💼',title:'Pessoa-chave ficou doente',text:'Uma pessoa ficará ausente por dois dias.',choices:[
+  {label:'Redistribuir trabalho',desc:'Outro papel ajuda a etapa gargalo.',act:()=>{const p=people[rnd(0,people.length-1)];state.absent[p.id]=state.day+2;log(`${p.name} ausente por dois dias.`)}} ,
+  {label:'Começar mais itens para manter todos ocupados',desc:'Aumenta WIP e contexto trocado.',act:()=>{moveRandomFromBacklog(2);log('Mais itens iniciados para ocupar capacidade.')}}]},
+ {person:'Téo',role:'Líder Técnico',avatar:'👨‍💻',title:'Débito técnico cobrando juros',text:'O sistema está frágil. Podemos investir agora ou continuar priorizando features.',choices:[
+  {label:'Criar item de débito técnico',desc:'Sem receita imediata, reduz risco futuro.',act:()=>{state.cards.unshift(item('debt',state.day));log('Item de débito técnico criado.')}} ,
+  {label:'Adiar e focar em features',desc:'Ganha curto prazo, aumenta risco.',act:()=>{state.debt=Math.min(10,state.debt+1);log('Débito técnico adiado.')}}]},
+ {person:'Marina',role:'Comercial',avatar:'📣',title:'Contrato com data fixa',text:'Um parceiro exige entrega em uma janela específica.',choices:[
+  {label:'Aceitar o compromisso',desc:'Bônus se cumprir; multa se atrasar.',act:()=>{state.cards.unshift(item('fixed',state.day,state.cards));log('Item de data fixa aceito.')}} ,
+  {label:'Recusar para proteger o fluxo',desc:'Sem risco operacional, mas perde oportunidade.',act:()=>{state.revenue-=6;log('Contrato recusado para proteger o fluxo.')}}]}
+ ];
+ return pool[rnd(0,pool.length-1)];
+}
+function moveRandomFromBacklog(n){state.cards.filter(c=>c.col==='backlog').slice(0,n).forEach(c=>c.col='refine')}
+function log(text){state.logs.unshift({day:state.day,text})}
+function depBlocked(c,target){
+ if(!c.dep||target!=='dev')return null;
+ const d=state.cards.find(x=>x.id===c.dep);
+ if(!d||d.col==='prod')return null;
+ return d;
+}
+function canMove(c){
+ const n=next(c.col);if(!n)return false;const cm=col(c.col);if(cm.type==='active'&&c.rest[cm.stage]>0)return false;if(c.blocked)return false;
+ if(depBlocked(c,n))return false;
+ const lim=state.wip[n],count=state.cards.filter(x=>x.col===n).length,ignore=state.day<=state.policies.noLimitsUntil||c.type==='expedite'||c.type==='bug';
+ return col(n).type==='done'||ignore||!lim||count<lim;
+}
+let _toastT=null;
+function toast(msg,kind){
+ const old=document.querySelector('.toast');if(old)old.remove();
+ const d=document.createElement('div');d.className='toast'+(kind?' '+kind:'');d.innerHTML=msg;document.body.appendChild(d);
+ clearTimeout(_toastT);_toastT=setTimeout(()=>{d.remove()},2600);
+}
+// Explica POR QUE um item pode ou não ser puxado — mesma regra de canMove(), com diagnóstico.
+function moveReason(c,targetId){
+ const n=next(c.col);
+ if(!n)return{ok:false,msg:'<b>'+c.name+'</b> já está em Produção.'};
+ if(targetId&&targetId!==n){
+   if(targetId===c.col)return{ok:false,silent:true};
+   return{ok:false,msg:'Sistema puxado: o item avança uma etapa por vez. O próximo passo de <b>'+c.name+'</b> é <b>'+col(n).name+'</b>.'};
+ }
+ const cm=col(c.col);
+ if(c.blocked)return{ok:false,msg:'⛔ <b>'+c.name+'</b> está bloqueado por mais '+c.blocked+' dia(s). Impedimento visível é impedimento a resolver — nada flui daqui.'};
+ const dep=depBlocked(c,n);
+ if(dep)return{ok:false,msg:'🔗 <b>'+c.name+'</b> depende de <b>'+dep.name+'</b>, que ainda está em '+col(dep.col).name+'. Dependência não resolvida vira fila.'};
+ if(cm.type==='active'&&c.rest[cm.stage]>0)return{ok:false,msg:'<b>'+c.name+'</b> ainda tem <b>'+c.rest[cm.stage]+'</b> de esforço em '+cm.name+'. Aloque pessoas e encerre o dia.'};
+ const lim=state.wip[n],count=state.cards.filter(x=>x.col===n).length,ignore=state.day<=state.policies.noLimitsUntil||c.type==='expedite'||c.type==='bug';
+ if(!(col(n).type==='done'||ignore||!lim||count<lim))
+   return{ok:false,msg:'WIP de <b>'+col(n).name+'</b> esgotado ('+count+'/'+lim+'). Puxe algo de lá primeiro — ou decida conscientemente elevar o limite.'};
+ return{ok:true,to:n};
+}
+function moveCard(id,targetId){
+ const c=state.cards.find(x=>x.id===id);if(!c)return;
+ const r=moveReason(c,targetId);
+ if(!r.ok){if(!r.silent)toast(r.msg,'bad');return}
+ c.col=r.to;c.colSince=state.day;if(c.col==='readyDev'&&!c.commit)c.commit=state.day;
+ if(c.col==='prod')toast('🚀 <b>'+c.name+'</b> chegou à Produção.','good');
+ else if(col(c.col).type==='queue'&&criterios[c.col])
+  toast('✅ <b>'+col(c.col).name+'</b> — ao mover, você declara: '+criterios[c.col].resumo+' <i>(toque no ✓ da coluna para ver os critérios)</i>');
+ render();
+}
+// Regras de alocação — espelham a aba Equipe (ausência, silo, colunas ativas)
+function assignReason(p,c){
+ if(state.absent[p.id]&&state.day<=state.absent[p.id])
+   return{ok:false,msg:'<b>'+p.name+'</b> está ausente hoje. Ninguém aloca quem não está.'};
+ const cm=col(c.col);
+ if(cm.type!=='active'||c.done)
+   return{ok:false,msg:'Pessoas só trabalham em colunas de atividade (Refinamento, Planejamento, Dev, Teste, Homologação). Filas não consomem esforço.'};
+ if(state.day<=state.policies.siloUntil&&!p.spec.includes(c.col))
+   return{ok:false,msg:'Política de silo ativa: <b>'+p.name+'</b> ('+p.role+') só pode atuar em sua especialidade.'};
+ return{ok:true};
+}
+function assignPerson(pid,cardId){
+ const p=people.find(x=>x.id===pid),c=state.cards.find(x=>x.id===cardId);
+ if(!p||!c)return;
+ const r=assignReason(p,c);
+ if(!r.ok){toast(r.msg,'bad');return}
+ state.assign[p.id]=c.id;
+ const spec=p.spec.includes(c.col);
+ let msg=(spec?'⭐ ':'')+'<b>'+p.name+'</b> alocado em <b>'+c.name+'</b>'+(spec?' — especialista, produz 2×.':'.');
+ if(c.blocked)msg+=' ⚠️ Atenção: o item está bloqueado — não haverá progresso até desbloquear.';
+ toast(msg,c.blocked?'bad':'good');
+ render();
+}
+function unassignPerson(pid){
+ const p=people.find(x=>x.id===pid);if(!p||!state.assign[pid])return;
+ state.assign[pid]=null;
+ toast('<b>'+p.name+'</b> liberado para a bancada.','good');
+ render();
+}
+function endDay(){
+ let dailyDone=0;state.cost+=custoDiario();
+ // Eficiência de fluxo honesta: item em coluna ativa SEM ninguém alocado é espera, não trabalho.
+ const trabalhadosHoje=new Set(people.filter(p=>!(state.absent[p.id]&&state.day<=state.absent[p.id]))
+   .map(p=>state.assign[p.id]).filter(Boolean));
+ committed().forEach(c=>{const cm=col(c.col);
+  if(cm.type==='active'&&!c.blocked&&trabalhadosHoje.has(c.id))c.touch++;
+  else{c.wait++;if(cm.type==='active'&&!c.blocked)c.ocioso=(c.ocioso||0)+1}
+  if(c.blocked)c.blockedTotal=(c.blockedTotal||0)+1});
+ // efeito Brooks: quem está em adaptação consome tempo de um veterano da mesma especialidade
+ const mentores=new Set();
+ people.filter(p=>precisaMentoria(p)).forEach(novo=>{
+  const m=people.find(v=>!v.desde&&!mentores.has(v.id)&&v.spec.some(x=>novo.spec.includes(x)));
+  if(m)mentores.add(m.id);
+ });
+ people.forEach(p=>{
+  if(state.absent[p.id]&&state.day<=state.absent[p.id])return;
+  const id=state.assign[p.id],c=state.cards.find(x=>x.id===id);if(!c||col(c.col).type!=='active'||c.blocked)return;
+  let pts=rnd(1,6);if(p.spec.includes(c.col))pts*=2;if(state.day===state.policies.meetingDay)pts=Math.max(1,pts-1);
+  pts=pts*rampa(p);
+  if(mentores.has(p.id))pts=pts*(1-MENTORIA_PERDA);
+  pts=Math.max(1,Math.round(pts));
+  if(c.col==='dev')pts=Math.max(1,Math.floor(pts*(1-state.debt*.04)));
+  c.rest[col(c.col).stage]=Math.max(0,c.rest[col(c.col).stage]-pts);
+ });
+ state.cards.forEach(c=>{
+  if(c.blocked)c.blocked--;
+  const cm=col(c.col);if(cm.type==='active'&&c.rest[cm.stage]===0&&canMove(c)){
+    c.col=next(c.col);c.colSince=state.day;if(c.col==='readyDev'&&!c.commit)c.commit=state.day;
+    if(c.col==='prod'){c.done=state.day;dailyDone++;const lt=state.day-c.commit+1,fe=c.touch/(c.touch+c.wait||1);
+      // valor que esta entrega ainda vai gerar: ciclos de cobrança restantes + bônus aplicável
+      const ciclos=Math.max(0,Math.floor((DAYS-state.day)/3));
+      let val=(c.subs||0)*SUB_REVENUE*ciclos;
+      if(c.type==='expedite'&&lt<=5)val+=c.bonus;
+      if(c.type==='fixed'&&state.day<=c.due)val+=c.bonus;
+      state.deliveries.push({day:state.day,name:c.name,lt,type:c.type,fe,value:val});
+      if(c.type==='debt')state.debt=Math.max(0,state.debt-2);else{state.subs+=c.subs||0;if(c.type==='expedite'&&lt<=5)state.revenue+=c.bonus;if(c.type==='fixed'){if(state.day<=c.due)state.revenue+=c.bonus;else state.cost+=20}}
+    }
+  }
+  if(c.type==='fixed'&&!c.done&&c.due&&state.day>c.due&&!c.late){c.late=true;state.cost+=20}
+ });
+ if(state.day%3===0){state.revenue+=state.subs*SUB_REVENUE;log(`Ciclo de cobrança: ${state.subs} assinantes geraram R$ ${(state.subs*SUB_REVENUE).toFixed(1)}k.`)}
+ if(Math.random()<state.debt*.04){state.cards.push(item('bug',state.day,state.cards));log('Bug emergiu devido ao débito técnico.')}
+ if(Math.random()<.08){const active=state.cards.filter(c=>col(c.col).type==='active'&&!c.done);if(active.length){const c=active[rnd(0,active.length-1)];c.blocked=rnd(1,2);log(`${c.name} ficou bloqueado.`)}}
+ // DEMANDA ELÁSTICA: entregar não esvazia o backlog — atrai mais pedidos.
+ // Time que entrega vira time confiável, e time confiável recebe mais trabalho.
+ if(state.day%3===0)state.cards.unshift(item('standard',state.day,state.cards));   // demanda de base
+ for(let i=0;i<dailyDone;i++){
+  if(Math.random()<.55){state.cards.unshift(item('standard',state.day,state.cards));
+   if(i===0)log('Entrega gerou nova demanda: o negócio viu o time entregando e trouxe mais pedidos.');}
+ }
+ // urgência espontânea: cresce com a visibilidade do time (vazão recente)
+ const vazaoRec=state.history.slice(-5).reduce((a,b)=>a+(b.doneDay||0),0);
+ if(dailyDone&&Math.random()<Math.min(.20,.05+vazaoRec*.03)){
+  state.cards.push(item('expedite',state.day,state.cards));
+  log('⚡ Expedite não solicitado entrou no fluxo: cliente estratégico aproveitou a fama de time que entrega.');
+  toast('⚡ Um <b>expedite</b> entrou direto em Pronto para Desenvolvimento, furando os limites de WIP. Reprioritize.','bad');
+ }
+ // Violação de política ≠ excedente legítimo: expedite e bug atravessam os limites POR DESIGN.
+ const excedidas=Object.keys(state.wip).filter(k=>{
+  if(!state.wip[k]||state.day<=state.policies.noLimitsUntil)return false;
+  const itens=state.cards.filter(c=>c.col===k&&!c.done);
+  const furadores=itens.filter(c=>c.type==='expedite'||c.type==='bug').length;
+  return (itens.length-furadores)>state.wip[k];   // só conta o excesso que a política NÃO autoriza
+ });
+ const snap={day:state.day,wip:committed().length,doneDay:dailyDone,pessoas:people.length,custoDia:custoDiario(),valorAcum:state.deliveries.reduce((a,d)=>a+(d.value||0),0),over:excedidas.length,overCols:excedidas,revenue:state.revenue,cost:state.cost,profit:state.revenue-state.cost,subs:state.subs,backlog:state.cards.filter(c=>c.col==='backlog').length,upstream:state.cards.filter(c=>['refine','readyPlan','plan'].includes(c.col)).length,dev:state.cards.filter(c=>['readyDev','dev'].includes(c.col)).length,test:state.cards.filter(c=>['readyTest','test'].includes(c.col)).length,hml:state.cards.filter(c=>['readyHml','hml'].includes(c.col)).length,prod:state.cards.filter(c=>c.col==='prod').length};
+ state.history.push(snap);
+ // As alocações PERMANECEM para o dia seguinte — trocar é decisão do jogador.
+ // Só liberamos quem ficou sem trabalho: item entregue ou inexistente.
+ let ociosos=[],esperando=[],bloqueados=[];
+ people.forEach(p=>{
+  const id=state.assign[p.id];if(!id)return;
+  const c=state.cards.find(x=>x.id===id);
+  if(!c||c.done||c.col==='prod'){state.assign[p.id]=null;ociosos.push(p.name);return}
+  if(c.blocked)bloqueados.push(p.name);
+  else if(col(c.col).type!=='active')esperando.push(p.name);
+ });
+ const avisos=[];
+ if(ociosos.length)avisos.push(`${ociosos.join(', ')} ${ociosos.length>1?'ficaram livres':'ficou livre'} — item entregue.`);
+ if(esperando.length)avisos.push(`⚠️ ${esperando.join(', ')} ${esperando.length>1?'estão alocados':'está alocado'} em item parado em fila: não produz nada até ser puxado.`);
+ if(bloqueados.length)avisos.push(`⛔ ${bloqueados.join(', ')} ${bloqueados.length>1?'estão':'está'} em item bloqueado: esforço perdido enquanto durar o impedimento.`);
+ avisos.forEach(a=>log(a));
+ const parados=esperando.length+bloqueados.length;
+ if(parados)toast(`${parados} pessoa(s) alocada(s) em item parado — capacidade sendo desperdiçada. Realoque arrastando o avatar.`,'bad');
+ state.day++;
+ if(state.day>DAYS){state.screen='final';recalcScore();saveRank();render();return}
+ if(Math.random()<.72)state.event=makeEvent();
+ state.daily=true;render();
+}
+// Elaboração progressiva: um item só ganha detalhe conforme atravessa os refinamentos.
+// 0 = bruto (backlog / em refinamento de negócio)
+// 1 = refinado no negócio (história e critérios definidos)
+// 2 = refinado tecnicamente (escopo, esforço e dependências conhecidos)
+function maturity(c){
+ const i=order.indexOf(c.col);
+ if(i>=order.indexOf('readyDev'))return 2;
+ if(i>=order.indexOf('readyPlan'))return 1;
+ return 0;
+}
+const MAT_LABEL=['Item bruto — ainda não refinado','Refinado no negócio — falta refinamento técnico','Pronto para desenvolvimento'];
+function pitchOf(c){
+ const sp=specOf(c);
+ if(sp.kind==='bug')return sp.desc;
+ if(sp.kind==='tech')return sp.desc;
+ return sp.story.quero.charAt(0).toUpperCase()+sp.story.quero.slice(1)+'.';
+}
+// Business value: valor que o item ainda gera se entregue hoje, e o custo de cada dia de atraso.
+function ciclosRestantes(dia){return Math.max(0,Math.floor((DAYS-(dia==null?state.day:dia))/3))}
+function businessValue(c,dia){
+ const d=dia==null?state.day:dia;
+ let v=(c.subs||0)*SUB_REVENUE*ciclosRestantes(d);
+ if(c.type==='expedite')v+=c.bonus||0;
+ if(c.type==='fixed'&&c.due&&d<=c.due)v+=c.bonus||0;
+ return v;
+}
+function custoAtrasoDia(c){return (c.subs||0)*SUB_REVENUE/3}
+/* ===== Kanban Daily: caminhada pelo quadro da direita para a esquerda, focada no TRABALHO =====
+   Não fala de pessoas nem de status individual. Fala de itens, filas, idade e impedimentos —
+   que é o que permite decidir o que puxar e onde concentrar esforço. */
+function dailyBriefing(){
+ const alertas=[],pauta=[];
+ const lts=state.deliveries.map(d=>d.lt),p85=percentile(lts,85);
+ // percorre da direita (mais perto do cliente) para a esquerda
+ const walk=order.slice().reverse().filter(id=>id!=='prod');
+ walk.forEach(id=>{
+  const cl=col(id),itens=state.cards.filter(c=>c.col===id&&!c.done);
+  if(!itens.length&&id!=='backlog')return;
+  const lim=state.wip[id],limAtivo=state.day>state.policies.noLimitsUntil;
+  const linhas=itens.map(c=>{
+   const idade=c.commit?state.day-c.commit+1:null;
+   const parado=state.day-(c.colSince||state.day);
+   const flags=[];
+   if(c.blocked)flags.push({t:'⛔ bloqueado por '+c.blocked+'d',k:'bad'});
+   const dep=c.dep?state.cards.find(x=>x.id===c.dep):null;
+   if(dep&&dep.col!=='prod')flags.push({t:'🔗 espera '+dep.name,k:'bad'});
+   if(idade&&idade>state.sle)flags.push({t:'⏰ '+idade+'d — acima do SLE',k:'bad'});
+   else if(idade&&p85&&idade>p85)flags.push({t:'⏳ '+idade+'d — passou do P85',k:'warn'});
+   if(cl.type==='queue'&&parado>=2)flags.push({t:'🧊 parado há '+parado+'d nesta fila',k:'warn'});
+   if(cl.type==='active'&&c.rest[cl.stage]>0)flags.push({t:'esforço restante '+c.rest[cl.stage],k:'muted'});
+   if(cl.type==='active'&&c.rest[cl.stage]===0)flags.push({t:'✅ concluído aqui — pode ser puxado',k:'good'});
+   if(maturity(c)===0&&id!=='backlog')flags.push({t:'🌱 ainda sem refinamento de negócio',k:'muted'});
+   return{c,idade,parado,flags};
+  });
+  // perguntas de fluxo por coluna
+  let pergunta='';
+  if(cl.type==='queue'&&itens.length){
+   const prontos=linhas.filter(l=>!l.c.blocked).length;
+   if(lim&&limAtivo&&itens.length>=lim)pergunta=`Fila cheia (${itens.length}/${lim}). Nada mais entra aqui até algo sair. O gargalo está à frente.`;
+   else if(prontos)pergunta=`${prontos} item(ns) aguardando ser puxado(s). Há capacidade adiante?`;
+  }
+  if(cl.type==='active'){
+   if(!itens.length)pergunta='Etapa ociosa — a jusante fica sem alimentação em breve.';
+   else{
+    const prontos=linhas.filter(l=>l.c.rest[cl.stage]===0&&!l.c.blocked).length;
+    if(prontos)pergunta=`${prontos} item(ns) já concluído(s) nesta etapa: puxe adiante antes de começar outro.`;
+   }
+  }
+  pauta.push({cl,linhas,pergunta,lim:limAtivo?lim:null});
+ });
+ // alertas priorizados (o que decidir hoje)
+ const wip=committed().filter(c=>!c.done&&c.col!=='prod');
+ const bloq=wip.filter(c=>c.blocked);
+ if(bloq.length)alertas.push({k:'bad',t:`${bloq.length} item(ns) bloqueado(s)`,d:'Impedimento é a prioridade número um: enquanto durar, nenhum esforço aplicado ali vira entrega. '+bloq.map(c=>c.name).join(', ')+'.'});
+ const velhos=wip.filter(c=>c.commit&&state.day-c.commit+1>state.sle).sort((a,b)=>a.commit-b.commit);
+ if(velhos.length)alertas.push({k:'bad',t:`${velhos.length} item(ns) acima do SLE de ${state.sle}d`,d:'Item velho não melhora sozinho. Concentre esforço para terminar antes de começar qualquer coisa nova: '+velhos.slice(0,3).map(c=>c.name+' ('+(state.day-c.commit+1)+'d)').join(', ')+'.'});
+ const deps=wip.filter(c=>{const d=c.dep?state.cards.find(x=>x.id===c.dep):null;return d&&d.col!=='prod'});
+ if(deps.length)alertas.push({k:'warn',t:`${deps.length} item(ns) esperando dependência`,d:'Dependência não resolvida vira fila. Vale priorizar o item que destrava os outros.'});
+ // inanição: etapa ativa vazia com fila cheia atrás
+ ['dev','test','hml'].forEach(a=>{
+  const ativos=state.cards.filter(c=>c.col===a&&!c.done).length;
+  const fila=state.cards.filter(c=>c.col===order[order.indexOf(a)-1]&&!c.done).length;
+  if(!ativos&&fila)alertas.push({k:'warn',t:`${col(a).name} está vazia com ${fila} item(ns) na fila anterior`,d:'Capacidade ociosa à frente e trabalho parado atrás. Puxe.'});
+ });
+ const entreguesOntem=state.deliveries.filter(d=>d.day===state.day-1);
+ return{pauta,alertas,entreguesOntem,wip:wip.length};
+}
+function dailyModal(){
+ const b=dailyBriefing();
+ const cls={bad:'d-bad',warn:'d-warn',good:'d-good',muted:'d-muted'};
+ return `<div class="modal" data-daily-bg><div class="dialog detail daily"><div class="dhead"><div>
+  <span class="tag">DIA ${state.day}</span><h3>🗣️ Kanban Daily — caminhada pelo quadro</h3>
+  <small class="muted">Da direita para a esquerda, item a item. Falamos do <b>trabalho</b>, não das pessoas.</small></div>
+  <button class="dclose" data-daily-close>✕</button></div>
+ <div class="dbody">
+  <section><div class="bv"><div><small>WIP EM PROGRESSO</small><b>${b.wip}</b></div><div><small>ENTREGUE ONTEM</small><b class="${b.entreguesOntem.length?'good':'muted'}">${b.entreguesOntem.length}</b></div></div>
+   ${b.entreguesOntem.length?`<p class="muted" style="margin-top:6px">🚀 ${b.entreguesOntem.map(d=>d.name+' ('+d.lt+'d)').join(' · ')}</p>`:''}</section>
+  ${b.alertas.length?`<section><h6>🎯 O que decidir hoje</h6>${b.alertas.map(a=>`<div class="alert ${cls[a.k]}"><b>${a.t}</b><span>${a.d}</span></div>`).join('')}</section>`:'<section><h6>🎯 O que decidir hoje</h6><p class="muted">Sem impedimentos nem itens envelhecidos. Fluxo saudável — mantenha o ritmo de puxada.</p></section>'}
+  <section><h6>🧭 Caminhada pelo quadro</h6>
+  ${b.pauta.map(p=>`<div class="dcol">
+    <div class="dcol-h">${p.cl.name} <span class="muted">· ${p.linhas.length} item(ns)${p.lim?' / limite '+p.lim:''}</span></div>
+    ${p.linhas.length?p.linhas.map(l=>`<div class="ditem"><div class="ditem-n">${l.c.name} ${(l.c.type!=='debt'&&l.c.type!=='bug')?`<span class="tag tag-bv">💎 ${Math.round(businessValue(l.c))}k</span>`:`<span class="tag tag-tech">${l.c.type==='debt'?'🛡️ técnico':'⚠️ defeito'}</span>`}</div>
+      <div class="ditem-f">${l.idade?`<span class="d-muted">idade ${l.idade}d</span>`:'<span class="d-muted">não comprometido</span>'}${l.flags.map(f=>`<span class="${cls[f.k]}">${f.t}</span>`).join('')}</div></div>`).join(''):'<div class="ditem"><span class="muted">vazia</span></div>'}
+    ${p.pergunta?`<div class="dq">❓ ${p.pergunta}</div>`:''}
+   </div>`).join('')}
+  </section>
+  <section><small class="note">A daily do Kanban não é reunião de status individual. Caminha-se da direita para a esquerda porque o que está mais perto do cliente é o que mais importa terminar — e porque começar coisa nova é a última prioridade, não a primeira.</small></section>
+ </div>
+ <div class="dfoot"><button class="btn primary" data-daily-close>Entendi — vou decidir</button></div>
+ </div></div>`;
+}
+function cardDetail(){
+ const c=state.cards.find(x=>x.id===state.detail);if(!c)return '';
+ const sp=specOf(c),cm=col(c.col),s=service[c.type];
+ const age=c.created?state.day-c.created+1:0;
+ const lt=c.commit?(c.done||state.day)-c.commit+1:null;
+ const fe=(c.touch+c.wait)?c.touch/(c.touch+c.wait):null;
+ const dep=c.dep?state.cards.find(x=>x.id===c.dep):null;
+ const totalEff=Object.values(c.effort).reduce((a,b)=>a+b,0);
+ const restEff=Object.values(c.rest).reduce((a,b)=>a+b,0);
+ const pct=totalEff?Math.round((1-restEff/totalEff)*100):0;
+ const mat=maturity(c);
+ const ciclos=ciclosRestantes();
+ const valorHoje=businessValue(c);
+ const cdDia=custoAtrasoDia(c);
+ const valorDepois=businessValue(c,state.day+5);
+ const stages=[['refine','Refinamento'],['plan','Planejamento'],['dev','Desenvolvimento'],['test','Teste'],['hml','Homologação']];
+ const assigned=people.filter(p=>state.assign[p.id]===c.id);
+ return `<div class="modal" data-detail-bg><div class="dialog detail"><div class="dhead"><div><span class="tag">${s.label}</span><h3>${s.icon} ${c.name}</h3></div><button class="dclose" data-detail-close>✕</button></div>
+ <div class="dbody">
+  ${mat===0?`
+  <section><div class="matbar mat0">🌱 ${MAT_LABEL[0]}</div>
+   <h6>💡 ${sp.kind==='tech'?'Necessidade técnica identificada':'Ideia inicial'}</h6><p>${pitchOf(c)}</p>
+   <small class="note">Item ainda não passou pelo <b>Refinamento de Negócio</b>. ${sp.kind==='tech'?'Escopo técnico, impacto e critério de conclusão':'História, critérios de aceite e valor detalhado'} só existem depois que alguém trabalha nele. Comprometer-se com um item neste estado é assumir risco que ainda não foi dimensionado.</small></section>
+  `:sp.kind==='bug'?`
+  <section><h6>🐞 Descrição do defeito</h6><p>${sp.desc}</p></section>
+  <section><h6>🖥️ Ambiente</h6><p class="muted">${sp.ambiente}</p></section>
+  <section><h6>🔁 Passos para reproduzir</h6><ol class="steps">${sp.passos.map(x=>`<li>${x}</li>`).join('')}</ol></section>
+  <section><h6>🎯 Resultado esperado × obtido</h6>
+   <div class="cmp"><div class="cmp-ok"><small>ESPERADO</small>${sp.esperado}</div><div class="cmp-no"><small>OBTIDO</small>${sp.obtido}</div></div></section>
+  <section><h6>🚨 Severidade e impacto</h6><p><b class="bad">${sp.severidade}</b></p><p style="margin-top:6px">${sp.impacto}</p></section>
+  `:sp.kind==='tech'?`
+  <section><h6>🔧 Descritivo</h6><p>${sp.desc}</p></section>
+  <section><h6>🏷️ Atributo de qualidade</h6><p class="muted">${sp.atributo}</p></section>
+  <section><h6>🎯 Motivação</h6><p>${sp.motivacao}</p></section>
+  <section><h6>📦 Escopo técnico</h6><ul>${sp.escopo.map(x=>`<li>${x}</li>`).join('')}</ul></section>
+  <section><h6>⚠️ Impacto de não fazer</h6><p>${sp.impacto}</p></section>
+  <section><h6>✅ Critério de conclusão</h6><ul>${sp.dod.map(x=>`<li>${x}</li>`).join('')}</ul></section>
+  `:`
+  <section><div class="matbar ${mat===1?'mat1':'mat2'}">${mat===1?'📝':'✅'} ${MAT_LABEL[mat]}</div></section>
+  <section><h6>📋 História de usuário</h6>
+   <div class="story"><span class="skw">Como</span> ${sp.story.como},<br><span class="skw">quero</span> ${sp.story.quero},<br><span class="skw">para</span> ${sp.story.para}.</div></section>
+  <section><h6>✅ Critérios de aceite <small class="muted">(BDD)</small></h6>
+   ${sp.cenarios.map(cn=>`<div class="scen"><div class="scen-t">Cenário: ${cn.t}</div>${cn.p.map(([kw,txt])=>`<div class="step"><span class="kw kw-${kw==='Dado'?'d':kw==='Quando'?'q':kw==='Então'?'e':'a'}">${kw}</span> ${txt}</div>`).join('')}</div>`).join('')}
+  </section>`}
+  ${(c.type==='debt'||c.type==='bug')?`
+  <section><h6>💰 Business value</h6>
+   <p class="muted">Este item <b>não gera receita direta</b> — nenhum assinante, nenhum bônus.</p>
+   <p style="margin-top:6px">${c.type==='debt'?'Reduz o débito técnico em <b>2 pontos</b>. Cada ponto de débito diminui a produtividade em Desenvolvimento em 4% e aumenta a chance diária de surgir um novo bug. O retorno é <b>capacidade recuperada</b>, não receita.':'Correção de defeito: <b>zero receita</b> e consumo de capacidade que sairia de itens de valor. O bug é o preço já pago pelo débito acumulado.'}</p>
+   <small class="note">Justamente por não aparecer na receita, este tipo de trabalho costuma ser adiado até virar incidente. O custo dele está no lead time dos outros itens.</small>
+  </section>`:`
+  <section><h6>💰 Business value</h6>
+   <div class="bv"><div><small>VALOR SE ENTREGUE HOJE</small><b class="good">R$ ${valorHoje.toFixed(1)}k</b></div><div><small>CUSTO DE ATRASO</small><b class="bad">R$ ${cdDia.toFixed(1)}k/dia</b></div></div>
+   <table class="dtab">
+    <tr><td>Assinantes gerados</td><td><b>${c.subs||0}</b> × R$ ${SUB_REVENUE}k a cada 3 dias</td></tr>
+    ${c.bonus?`<tr><td>Bônus${c.type==='expedite'?' (só se LT ≤ 5d)':c.type==='fixed'?' (só até o prazo)':''}</td><td><b>${c.bonus}k</b></td></tr>`:''}
+    <tr><td>Ciclos de cobrança restantes</td><td><b>${ciclos}</b></td></tr>
+    <tr><td>Valor se entregue 5 dias depois</td><td><b class="bad">R$ ${valorDepois.toFixed(1)}k</b></td></tr>
+    <tr><td>Perda por atrasar 5 dias</td><td><b class="bad">−R$ ${(valorHoje-valorDepois).toFixed(1)}k</b></td></tr>
+   </table>
+   <small class="note">O valor do item não muda — o calendário muda. Cada dia parado em fila queima R$ ${cdDia.toFixed(1)}k que não voltam.</small>
+  </section>`}
+  <section><h6>🔗 Dependência</h6>${dep?`<p class="${dep.col==='prod'?'good':'bad'}">${dep.col==='prod'?'✅ Resolvida: ':'⚠️ Pendente: '}<b>${dep.name}</b> — ${col(dep.col).name}.${dep.col!=='prod'?' Este item <b>não entra em Desenvolvimento</b> até a dependência chegar à Produção.':''}</p>`:'<p class="muted">Nenhuma. Item independente — pode fluir sozinho.</p>'}</section>
+  <section><h6>⚙️ Esforço por etapa</h6>
+   ${mat<2?`<p class="muted">Estimativa de desenvolvimento, teste e homologação só existe <b>após o Refinamento Técnico</b>. Planejar antes disso é chutar.</p>`:''}
+   <table class="dtab">${stages.map(([k,n],si)=>{const t=c.effort[k]||0,r=c.rest[k]||0;if(!t)return '';
+    const liberado = si===0 ? true : si===1 ? mat>=1 : mat>=2;
+    if(!liberado)return `<tr><td>${n}</td><td class="muted">a estimar</td></tr>`;
+    return `<tr><td>${n}</td><td>${t-r}/${t} ${r===0?'<span class="good">✓</span>':''}</td></tr>`}).join('')}
+    ${mat>=2?`<tr><td><b>Total concluído</b></td><td><b>${pct}%</b></td></tr>`:''}
+   </table></section>
+  <section><h6>📊 Fluxo</h6>
+   <table class="dtab">
+    <tr><td>Coluna atual</td><td><b>${cm.name}</b></td></tr>
+    <tr><td>Criado no dia</td><td>${c.created}</td></tr>
+    <tr><td>Comprometido (commit)</td><td>${c.commit?'dia '+c.commit:'<span class="muted">ainda não — está no upstream</span>'}</td></tr>
+    <tr><td>Idade no sistema</td><td>${age} dia(s)</td></tr>
+    <tr><td>Lead time ${c.done?'':'(parcial)'}</td><td>${lt?lt+' dia(s)':'—'} ${lt&&lt>state.sle?'<span class="bad">acima do SLE de '+state.sle+'d</span>':lt?'<span class="good">dentro do SLE</span>':''}</td></tr>
+    <tr><td>Eficiência de fluxo</td><td>${fe!=null?(fe*100).toFixed(0)+'% <small class="muted">('+c.touch+'d trabalho / '+c.wait+'d espera)</small>':'—'}</td></tr>
+    ${c.due?`<tr><td>Prazo</td><td>dia ${c.due} ${state.day>c.due?'<span class="bad">ATRASADO</span>':'<span class="good">faltam '+(c.due-state.day)+'d</span>'}</td></tr>`:''}
+    ${c.blocked?`<tr><td>Bloqueio</td><td class="bad">${c.blocked} dia(s) restante(s)</td></tr>`:''}
+   </table></section>
+  ${(()=>{const n=next(c.col);if(!n)return '';const k=criterios[n];if(!k)return '';
+   return `<section><h6>➡️ Para avançar para "${col(n).name}"</h6>
+    <p class="muted" style="margin-bottom:6px">${k.resumo}</p>
+    <ul class="crit">${k.itens.map(i=>`<li>${i}</li>`).join('')}</ul></section>`})()}
+  ${sp.risco?`<section><h6>⚠️ Risco</h6><p>${sp.risco}</p></section>`:''}
+  ${assigned.length?`<section><h6>👥 Alocados agora</h6><p>${assigned.map(p=>p.name+' <small class="muted">('+p.role+(p.spec.includes(c.col)?' — ⭐ especialista, produz 2×':'')+')</small>').join('<br>')}</p></section>`:''}
+ </div></div></div>`;
+}
+function analysis(){
+ const lts=state.deliveries.map(x=>x.lt),p50=percentile(lts,50),p85=percentile(lts,85),ratio=p50&&p85?p85/p50:null,avgW=mean(state.history.map(x=>x.wip))||0,tp=throughput(),fe=mean(state.deliveries.map(x=>x.fe).filter(x=>x!=null))||0;
+ const strengths=[],improve=[],tips=[];
+ if(avgW<=8)strengths.push(`Você manteve WIP médio em ${avgW.toFixed(1)}, evitando saturação extrema.`);else improve.push(`WIP médio de ${avgW.toFixed(1)} sugere trabalho demais iniciado ao mesmo tempo.`);
+ if(state.debt<=2)strengths.push(`Débito técnico final em ${state.debt}/10 protegeu capacidade e estabilidade.`);else improve.push(`Débito técnico terminou em ${state.debt}/10 e continuou cobrando juros.`);
+ if(ratio&&ratio<=1.8)strengths.push(`P85/P50 de ${ratio.toFixed(1)} indica boa consistência.`);else if(ratio)improve.push(`P85/P50 de ${ratio.toFixed(1)} revela cauda longa e baixa previsibilidade.`);
+ if(fe>=.35)strengths.push(`Eficiência de fluxo de ${(fe*100).toFixed(0)}%: pouco tempo perdido em espera.`);else improve.push(`Eficiência de fluxo de ${(fe*100).toFixed(0)}%: a maior parte do tempo foi espera.`);
+ tips.push(`Seu throughput foi ${tp.toFixed(2)} itens/dia. Use distribuições históricas para forecast, não compromissos baseados em média.`);
+ tips.push(`Na próxima partida, altere apenas uma política por vez e observe o efeito no CFD, Aging WIP e percentis.`);
+ return {strengths,improve,tips,p50,p85};
+}
+function final(){
+ const a=analysis(),profit=state.revenue-state.cost;
+ return `<div class="container final"><div class="panel"><div class="brand">FLOW<b>LAB</b></div><div class="credit">Jogo criado por <b>Prof. Ari Amaral</b></div><h1>Projeto encerrado</h1><div class="scorebox"><div class="scorecard">Score<br><b>${state.score}</b></div><div class="scorecard">Rank<br><b>${rankName()}</b></div><div class="scorecard">Lucro<br><b>R$ ${profit.toFixed(0)}k</b></div><div class="scorecard">Entregas<br><b>${state.deliveries.length}</b></div><div class="scorecard">P85<br><b>${a.p85==null?'—':a.p85}d</b></div></div>
+ ${(()=>{const pr=predictability(),inS=state.deliveries.filter(d=>d.lt<=state.sle).length,lu=Math.max(0,Math.round(state.revenue-state.cost));
+ return `<table class="dtab" style="margin:14px 0"><tr><td colspan="2"><b>Composição do score</b></td></tr>
+ <tr><td>Lucro (receita − custo)</td><td><b>${lu}</b></td></tr>
+ <tr><td>${inS} entrega(s) dentro do SLE de ${state.sle}d × 25</td><td><b>${inS*25}</b></td></tr>
+ <tr><td>Previsibilidade ${pr.ratio?'(P85/P50 = '+pr.ratio.toFixed(2)+')':'('+pr.motivo+')'}</td><td><b>${pr.pts}</b> <small class="muted">/ ${PRED_MAX}</small></td></tr>
+ <tr><td><b>Total</b></td><td><b>${state.score}</b></td></tr></table>`})()}
+ ${custoValorPanel()}
+ <h3 style="margin-top:20px">🎓 Banca de especialistas</h3>
+ <p style="font-size:12.5px;color:#475569;margin:0 0 12px">Seis lentes diferentes sobre a mesma partida. Cada especialista analisou os seus números.</p>
+ ${expertPanel(true)}
+ <button id="restart" class="primary">Jogar novamente</button></div></div>`;
+}
+/* ===== Arrastar cartões (mouse + toque) =====
+   Toque: pressione e segure (~220ms) para pegar o cartão — assim o swipe continua rolando o quadro.
+   Mouse: arraste direto. Clique simples continua avançando o item. */
+const drag={id:null,kind:null,from:null,el:null,ghost:null,armed:false,active:false,timer:null,sx:0,sy:0,lastCol:null,raf:null,px:0,justDragged:false,lastClickId:null,lastClickAt:0};
+function dragCleanup(){
+ clearTimeout(drag.timer);cancelAnimationFrame(drag.raf);
+ if(drag.ghost){drag.ghost.remove();drag.ghost=null}
+ document.querySelectorAll('.drop-ok,.drop-no').forEach(el=>el.classList.remove('drop-ok','drop-no'));
+ document.querySelectorAll('.is-source').forEach(el=>el.classList.remove('is-source'));
+ document.body.classList.remove('dragging-active');
+ drag.id=null;drag.kind=null;drag.from=null;drag.el=null;drag.armed=false;drag.active=false;drag.lastCol=null;
+}
+function dragStart(el,x,y){
+ drag.active=true;document.body.classList.add('dragging-active');
+ try{if(drag.pid!=null&&el.setPointerCapture)el.setPointerCapture(drag.pid)}catch(_){}
+ el.classList.add('is-source');
+ const g=el.cloneNode(true);g.classList.add('drag-ghost');g.classList.remove('is-source');
+ document.body.appendChild(g);drag.ghost=g;moveGhost(x,y);
+ if(navigator.vibrate)navigator.vibrate(12);
+ autoScrollLoop();
+}
+function moveGhost(x,y){if(drag.ghost){drag.ghost.style.left=x+'px';drag.ghost.style.top=y+'px'}}
+function elUnder(x,y,sel){
+ const el=document.elementFromPoint(x,y);
+ return el?el.closest(sel):null;
+}
+function colUnder(x,y){return elUnder(x,y,'[data-col]')}
+function highlight(x,y){
+ if(drag.kind==='person'){
+  const p=people.find(i=>i.id===drag.id);
+  const cardEl=elUnder(x,y,'[data-card]'),trayEl=elUnder(x,y,'[data-tray]');
+  document.querySelectorAll('.work.drop-ok,.work.drop-no').forEach(el=>{if(el!==cardEl)el.classList.remove('drop-ok','drop-no')});
+  const tray=document.querySelector('[data-tray]');if(tray)tray.classList.toggle('drop-ok',!!trayEl&&!!state.assign[drag.id]);
+  if(cardEl&&p){
+   const c=state.cards.find(i=>i.id===cardEl.dataset.card);
+   cardEl.classList.remove('drop-ok','drop-no');
+   if(c)cardEl.classList.add(assignReason(p,c).ok?'drop-ok':'drop-no');
+  }
+  return;
+ }
+ const target=colUnder(x,y),c=state.cards.find(i=>i.id===drag.id);
+ if(drag.lastCol&&drag.lastCol!==target)drag.lastCol.classList.remove('drop-ok','drop-no');
+ if(!target||!c){drag.lastCol=null;return}
+ target.classList.remove('drop-ok','drop-no');
+ if(target.dataset.col!==c.col)target.classList.add(moveReason(c,target.dataset.col).ok?'drop-ok':'drop-no');
+ drag.lastCol=target;
+}
+function autoScrollLoop(){
+ if(!drag.active)return;
+ const wrap=document.querySelector('.board-wrap');
+ if(wrap){const r=wrap.getBoundingClientRect(),edge=70;
+  if(drag.px<r.left+edge)wrap.scrollLeft-=Math.max(6,(r.left+edge-drag.px)/4);
+  else if(drag.px>r.right-edge)wrap.scrollLeft+=Math.max(6,(drag.px-(r.right-edge))/4);
+ }
+ drag.raf=requestAnimationFrame(autoScrollLoop);
+}
+function initDrag(){
+ const zone=document.getElementById('flowzone');if(!zone)return;
+ zone.addEventListener('pointerdown',e=>{
+  if(e.target.closest('[data-info]'))return; // botão de detalhe: não arma arraste nem captura ponteiro
+  const person=e.target.closest('[data-person]');
+  const cardEl=person?null:e.target.closest('[data-card]');
+  const el=person||cardEl;if(!el)return;
+  if(person&&person.classList.contains('absent'))return; // ausente não arrasta
+  drag.kind=person?'person':'card';
+  drag.from=person?(person.dataset.from||'tray'):'board';
+  drag.id=person?person.dataset.person:cardEl.dataset.card;
+  drag.sx=e.clientX;drag.sy=e.clientY;drag.px=e.clientX;drag.armed=true;drag.justDragged=false;drag.el=el;drag.pid=e.pointerId;
+  if(e.pointerType!=='mouse'){drag.timer=setTimeout(()=>{if(drag.armed)dragStart(el,drag.sx,drag.sy)},220)}
+ });
+ zone.addEventListener('pointermove',e=>{
+  if(!drag.armed)return;
+  const dx=Math.abs(e.clientX-drag.sx),dy=Math.abs(e.clientY-drag.sy);
+  if(!drag.active){
+   if(e.pointerType==='mouse'){if(dx>6||dy>6){if(drag.el)dragStart(drag.el,e.clientX,e.clientY)}}
+   else if(dx>12||dy>12){clearTimeout(drag.timer);drag.armed=false;drag.id=null;drag.kind=null;drag.el=null} // virou rolagem
+   return;
+  }
+  drag.px=e.clientX;moveGhost(e.clientX,e.clientY);highlight(e.clientX,e.clientY);
+ });
+ const finish=e=>{
+  if(!drag.armed&&!drag.active)return;
+  if(drag.active){
+   const kind=drag.kind,id=drag.id,from=drag.from;
+   const cardEl=elUnder(e.clientX,e.clientY,'[data-card]');
+   const colEl=colUnder(e.clientX,e.clientY);
+   const trayEl=elUnder(e.clientX,e.clientY,'[data-tray]');
+   drag.justDragged=true;dragCleanup();
+   if(kind==='person'){
+    if(cardEl)assignPerson(id,cardEl.dataset.card);
+    else if(trayEl)unassignPerson(id);
+    else if(from==='card')unassignPerson(id); // puxou para fora do cartão = liberar
+    else toast('Solte a pessoa sobre um cartão para alocar, ou na bancada para liberar.','bad');
+   }else{
+    if(colEl)moveCard(id,colEl.dataset.col);
+    else toast('Solte o cartão sobre uma coluna do quadro.','bad');
+   }
+  }else dragCleanup();
+ };
+ zone.addEventListener('pointerup',finish);
+ zone.addEventListener('pointercancel',()=>dragCleanup());
+ // impede a rolagem nativa enquanto algo está sendo arrastado no toque
+ document.addEventListener('touchmove',e=>{if(drag.active)e.preventDefault()},{passive:false});
+}
+function bind(){
+ const s=document.getElementById('start');if(s)s.onclick=()=>{const n=document.getElementById('name').value.trim();if(!n)return alert('Informe seu nome.');state.player={name:n,class:document.getElementById('class').value.trim()};state.screen='game';state.event={person:'Rafa',role:'Agile Coach',avatar:'🧑‍🏫',title:'Passagem de bastão',text:'Você assume no dia 4 com fila de teste cheia, um item bloqueado e débito técnico em 4/10. Antes de começar mais coisas, observe o quadro.',choices:[{label:'Assumir o desafio',desc:'Abrir o quadro e diagnosticar o fluxo.',act:()=>log('Assumiu a gestão do fluxo.')} ]};render()};
+ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;render()});
+ document.querySelectorAll('[data-wip]').forEach(b=>b.onclick=()=>{const id=b.dataset.wip,d=+b.dataset.delta;state.wip[id]=Math.max(1,(state.wip[id]||1)+d);render()});
+ document.querySelectorAll('[data-card]').forEach(c=>{
+  c.onclick=e=>{
+   if(e.target.closest('[data-info]')){state.detail=c.dataset.card;render();return}
+   if(e.target.closest('[data-person]'))return; // toque no avatar não avança o cartão
+   if(drag.justDragged){drag.justDragged=false;return}
+   const now=Date.now();
+   // duplo clique dispara dois 'click': o 1º já avança; o 2º (em <350ms) é absorvido
+   if(drag.lastClickId===c.dataset.card&&now-drag.lastClickAt<350)return;
+   drag.lastClickId=c.dataset.card;drag.lastClickAt=now;
+   moveCard(c.dataset.card);
+  };
+  c.ondblclick=e=>e.preventDefault(); // evita seleção de texto no duplo clique
+ });
+ document.querySelectorAll('[data-hire]').forEach(b=>b.onclick=()=>contratar(b.dataset.hire));
+ document.querySelectorAll('[data-crit]').forEach(b=>b.onclick=e=>{e.stopPropagation();state.criterios=b.dataset.crit;render()});
+ document.querySelectorAll('[data-crit-close]').forEach(b=>b.onclick=()=>{state.criterios=null;render()});
+ const cbg=document.querySelector('[data-crit-bg]');if(cbg)cbg.onclick=e=>{if(e.target===cbg){state.criterios=null;render()}};
+ document.querySelectorAll('[data-daily-close]').forEach(b=>b.onclick=()=>{state.daily=false;render()});
+ document.querySelectorAll('[data-detail-close]').forEach(b=>b.onclick=()=>{state.detail=null;render()});
+ const dbg=document.querySelector('[data-detail-bg]');
+ if(dbg)dbg.onclick=e=>{if(e.target===dbg){state.detail=null;render()}};
+ const od=document.getElementById('openDaily');if(od)od.onclick=()=>{state.daily=true;render()};
+ initDrag();
+ document.querySelectorAll('[data-assign]').forEach(s=>s.onchange=()=>{state.assign[s.dataset.assign]=s.value||null});
+ const e=document.getElementById('endDay');if(e)e.onclick=endDay;
+ const sm=document.getElementById('sleMinus');if(sm)sm.onclick=()=>{state.sle=Math.max(2,state.sle-1);render()};
+ const sp=document.getElementById('slePlus');if(sp)sp.onclick=()=>{state.sle++;render()};
+ document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{const c=state.event.choices[+b.dataset.choice];c.act();state.event=null;render()});
+ const r=document.getElementById('restart');if(r)r.onclick=()=>location.reload();
+}
+render();
+</script>
+</body>
+</html>
