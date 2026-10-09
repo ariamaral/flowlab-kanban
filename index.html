@@ -256,9 +256,129 @@ svg{width:100%;height:240px;background:#fff}
 </head>
 <body>
 <div id="app" class="app"><div class="hero"><div class="brand">FLOW<b>LAB</b></div><h1>Carregando o simulador...</h1><p>Se esta mensagem permanecer, abra o arquivo no Chrome, Edge ou Firefox.</p></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// Configure somente a URL do projeto e a chave publicável (publishable/anon).
+// NUNCA utilize service_role ou secret key no navegador.
+window.FLOWLAB_CONFIG = {
+  url: 'https://dfvbbwnxkwaunoaygmft.supabase.co',
+  key: 'sb_publishable_2lDcn1mrFHuK3Q0tx68HXA_XDL6I_ew',
+  rankingLimit: 50,
+  appVersion: '8.1-cloud'
+};
+</script>
 <script>
 window.onerror=function(msg,src,line,col){var a=document.getElementById("app");if(a){a.innerHTML='<div class="hero"><div class="brand">FLOW<b>LAB</b></div><h1>Não foi possível iniciar</h1><p>Erro: '+String(msg)+' (linha '+line+')</p><p>Abra este arquivo no Chrome ou Edge atualizado.</p></div>';}};
 const DAYS=30, TEAM_COST=8, BILLING=3, SUB_REVENUE=1.4;
+/* ===== FlowLab Cloud — ranking central e histórico por aluno =====
+   Configure apenas URL e chave publicável. NUNCA use service_role/secret no navegador.
+   A turma também pode vir pela URL: https://seusite.netlify.app/?turma=MBA-AGIL-2026
+*/
+const FLOWLAB_CLOUD=Object.assign({
+ url:'https://dfvbbwnxkwaunoaygmft.supabase.co',
+ key:'sb_publishable_2lDcn1mrFHuK3Q0tx68HXA_XDL6I_ew',
+ rankingLimit:50,
+ appVersion:'8.1-cloud'
+},globalThis.FLOWLAB_CONFIG||{});
+const FIXED_CLASS=(new URLSearchParams(location.search).get('turma')||'').trim();
+let flowDb=null,cloudUser=null,cloudSessionId=null,cloudRanking=[],cloudRankingLoaded=false;
+let cloudState='modo local',cloudSaveChain=Promise.resolve(),cloudStartedAt=null;
+function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
+function cloudConfigured(){return /^https:\/\/.+\.supabase\.co$/i.test(FLOWLAB_CLOUD.url)&&!FLOWLAB_CLOUD.url.includes('SEU-PROJETO')&&FLOWLAB_CLOUD.key&&!FLOWLAB_CLOUD.key.includes('SUA_CHAVE')}
+function makeUuid(){
+ if(globalThis.crypto?.randomUUID)return crypto.randomUUID();
+ const a=new Uint8Array(16);(globalThis.crypto||{}).getRandomValues?.(a);
+ if(!a.some(Boolean))for(let i=0;i<a.length;i++)a[i]=Math.floor(Math.random()*256);
+ a[6]=(a[6]&15)|64;a[8]=(a[8]&63)|128;
+ return [...a].map((b,i)=>([4,6,8,10].includes(i)?'-':'')+b.toString(16).padStart(2,'0')).join('');
+}
+function setCloudState(msg){
+ cloudState=msg;
+ const el=document.getElementById('cloudStatus');if(el)el.textContent=msg;
+ const fin=document.getElementById('cloudFinalStatus');if(fin)fin.textContent=msg;
+}
+function cloudIntroText(){
+ return cloudConfigured()
+  ?'Seu progresso será salvo no ranking central da turma ao fim de cada dia simulado.'
+  :'Modo local ativo. O professor ainda precisa configurar o banco central.';
+}
+async function ensureCloudUser(){
+ if(!cloudConfigured())return null;
+ if(!globalThis.supabase?.createClient)throw new Error('Biblioteca Supabase não carregou. Verifique a conexão com a internet.');
+ if(!flowDb)flowDb=globalThis.supabase.createClient(FLOWLAB_CLOUD.url,FLOWLAB_CLOUD.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+ if(cloudUser)return cloudUser;
+ const {data:sess,error:sessErr}=await flowDb.auth.getSession();
+ if(sessErr)throw sessErr;
+ if(sess?.session?.user){cloudUser=sess.session.user;return cloudUser}
+ setCloudState('conectando…');
+ const {data,error}=await flowDb.auth.signInAnonymously({options:{data:{app:'flowlab',version:FLOWLAB_CLOUD.appVersion}}});
+ if(error)throw error;
+ cloudUser=data.user;return cloudUser;
+}
+function cloudPayload(status='in_progress'){
+ const lts=state.deliveries.map(d=>d.lt),fes=state.deliveries.map(d=>d.fe).filter(v=>v!=null);
+ return {
+  session_id:cloudSessionId,
+  user_id:cloudUser.id,
+  player_name:state.player.name,
+  class_name:state.player.class,
+  status,
+  current_day:Math.min(DAYS,Math.max(1,state.day)),
+  score:state.score,
+  rank_name:rankName(),
+  profit:Math.round(state.revenue-state.cost),
+  revenue:state.revenue,
+  cost:state.cost,
+  deliveries_count:state.deliveries.length,
+  p50:percentile(lts,50),
+  p85:percentile(lts,85),
+  avg_wip:mean(state.history.map(h=>h.wip)),
+  throughput:throughput(),
+  flow_efficiency:fes.length?mean(fes):null,
+  debt:state.debt,
+  sle:state.sle,
+  history:state.history,
+  deliveries:state.deliveries,
+  logs:state.logs,
+  achievements:state.achievements,
+  state_snapshot:{cards:state.cards,wip:state.wip,policies:state.policies,assign:state.assign,subs:state.subs,revenue:state.revenue,cost:state.cost,debt:state.debt,sle:state.sle,contratacoes:state.contratacoes,absent:state.absent},
+  source_url:location.origin+location.pathname,
+  app_version:FLOWLAB_CLOUD.appVersion,
+  started_at:cloudStartedAt
+ };
+}
+async function saveCloudProgress(status='in_progress'){
+ if(!cloudConfigured()){setCloudState('modo local');return false}
+ try{
+  await ensureCloudUser();
+  if(!cloudSessionId)cloudSessionId=makeUuid();
+  if(!cloudStartedAt)cloudStartedAt=new Date().toISOString();
+  setCloudState('salvando…');
+  const {error}=await flowDb.from('flowlab_sessions').upsert(cloudPayload(status),{onConflict:'session_id'});
+  if(error)throw error;
+  setCloudState(status==='completed'?'resultado salvo':'salvo no dia '+Math.min(state.day,DAYS));
+  if(state.tab==='rank')loadCloudRanking(false);
+  return true;
+ }catch(err){
+  console.error('FlowLab Cloud:',err);
+  setCloudState('falha ao sincronizar');
+  return false;
+ }
+}
+function queueCloudSave(status='in_progress'){
+ cloudSaveChain=cloudSaveChain.catch(()=>{}).then(()=>saveCloudProgress(status));
+ return cloudSaveChain;
+}
+async function loadCloudRanking(rerender=true){
+ if(!cloudConfigured()){cloudRankingLoaded=true;if(rerender&&state.tab==='rank')render();return}
+ try{
+  await ensureCloudUser();setCloudState('carregando ranking…');
+  const {data,error}=await flowDb.rpc('get_flowlab_ranking',{p_class_name:state.player.class||null,p_limit:FLOWLAB_CLOUD.rankingLimit});
+  if(error)throw error;
+  cloudRanking=Array.isArray(data)?data:[];cloudRankingLoaded=true;setCloudState('ranking atualizado');
+ }catch(err){console.error('FlowLab ranking:',err);cloudRankingLoaded=true;setCloudState('ranking indisponível')}
+ if(rerender&&state.tab==='rank')render();
+}
 const columns=[
  {id:'backlog',name:'Backlog',group:'Upstream',type:'queue'},
  {id:'refine',name:'Refinamento de Negócio',group:'Upstream',type:'active',stage:'refine'},
@@ -585,8 +705,9 @@ function predictability(){
 function recalcScore(){const inSle=state.deliveries.filter(d=>d.lt<=state.sle).length;state.score=Math.max(0,Math.round(state.revenue-state.cost))+inSle*25+state.achievements.length*40+predictability().pts}
 function saveRank(){
  const rows=lerRanking();
- rows.push({name:state.player.name,class:state.player.class,score:state.score,rank:rankName(),profit:Math.round(state.revenue-state.cost),date:new Date().toISOString()});
+ rows.push({name:state.player.name,class:state.player.class,score:state.score,rank:rankName(),profit:Math.round(state.revenue-state.cost),day:Math.min(state.day,DAYS),status:'completed',date:new Date().toISOString()});
  gravarRanking(rows.slice(-100));
+ queueCloudSave('completed');
 }
 // Faixas calibradas sobre a distribuição real de 150 partidas simuladas (5 arquétipos × 30).
 // O localStorage lança exceção em file:// e em navegação privada em alguns navegadores.
@@ -605,7 +726,7 @@ function render(){recalcScore();document.getElementById('app').innerHTML=state.s
 function intro(){
  return `<div class="hero"><div class="grid2"><div><div class="brand">FLOW<b>LAB</b></div><div class="credit">Jogo criado por <b>Prof. Ari Amaral</b></div><h1>Você não gerencia pessoas.<br><span>Você gerencia fluxo.</span></h1><p>Assuma a operação da <b>OrbitPay</b>, uma empresa de produtos digitais pressionada por clientes, bugs, prazos e decisões executivas. Seu desafio é maximizar valor sem transformar o quadro em estacionamento de trabalho.</p>
  <div class="kpis"><div class="kpi"><small>Decisões</small><b>WIP, políticas, prioridade</b></div><div class="kpi"><small>Métricas</small><b>P50, P85, Aging, CFD</b></div><div class="kpi"><small>Duração</small><b>30 dias simulados</b></div></div></div>
- <div class="panel"><h3>Entrar na simulação</h3><label>Nome do aluno</label><input id="name" placeholder="Seu nome"/><label>Turma</label><input id="class" placeholder="Ex.: MBA Agilidade 2026"/><button id="start" class="primary" style="width:100%;margin-top:14px">Começar a jornada</button><p style="font-size:11px;color:#8fa6c6">Os resultados ficam salvos neste navegador.</p></div></div></div>`;
+ <div class="panel"><h3>Entrar na simulação</h3><label>Nome do aluno</label><input id="name" maxlength="80" placeholder="Seu nome ou identificação"/><label>Turma</label><input id="class" maxlength="80" value="${escapeHtml(FIXED_CLASS)}" ${FIXED_CLASS?'readonly':''} placeholder="Ex.: MBA-AGIL-2026"/><button id="start" class="primary" style="width:100%;margin-top:14px">Começar a jornada</button><p style="font-size:11px;color:#8fa6c6">☁️ ${cloudIntroText()}</p><p style="font-size:10px;color:#6f86a5">Ao iniciar, nome, turma, progresso, decisões e resultado da partida serão registrados para acompanhamento educacional.</p></div></div></div>`;
 }
 function classLegend(){
  return `<div class="clegend">${Object.entries(service).map(([k,v])=>
@@ -1058,7 +1179,7 @@ function custoValorPanel(){
  <p style="font-size:11.5px;color:#475569;margin-top:10px">O custo do time entra no score através do lucro (receita − custo). Contratar aumenta a capacidade e o custo ao mesmo tempo: só compensa se a pessoa entrar <b>na etapa que restringe o fluxo</b> e com tempo suficiente para superar a curva de adaptação.</p>`;
 }
 function topBar(){
- const profit=state.revenue-state.cost;return `<div class="topbar"><div class="brand">FLOW<b>LAB</b><span class="by">por Prof. Ari Amaral</span></div><div class="pill">🎮 <strong>${state.player.name}</strong></div><div class="pill">📅 Dia <strong>${state.day}/${DAYS}</strong></div><div class="pill">🏆 <strong>${state.score}</strong></div><div class="pill">💰 <strong style="color:${profit>=0?'#3ddc97':'#ff5d73'}">R$ ${profit.toFixed(0)}k</strong></div><div class="pill">👥 <strong>${state.subs}</strong> assinantes</div><div class="pill">🧨 Débito <strong>${state.debt}/10</strong></div><button id="endDay" class="primary" style="margin-left:auto">Encerrar o dia 🎲</button></div>`;
+ const profit=state.revenue-state.cost;return `<div class="topbar"><div class="brand">FLOW<b>LAB</b><span class="by">por Prof. Ari Amaral</span></div><div class="pill">🎮 <strong>${escapeHtml(state.player.name)}</strong></div><div class="pill">📅 Dia <strong>${state.day}/${DAYS}</strong></div><div class="pill">🏆 <strong>${state.score}</strong></div><div class="pill">💰 <strong style="color:${profit>=0?'#3ddc97':'#ff5d73'}">R$ ${profit.toFixed(0)}k</strong></div><div class="pill">👥 <strong>${state.subs}</strong> assinantes</div><div class="pill">🧨 Débito <strong>${state.debt}/10</strong></div><div class="pill">☁️ <strong id="cloudStatus">${escapeHtml(cloudState)}</strong></div><button id="endDay" class="primary" style="margin-left:auto">Encerrar o dia 🎲</button></div>`;
 }
 function game(){
  const lts=state.deliveries.map(x=>x.lt),p50=percentile(lts,50),p85=percentile(lts,85),tp=throughput(),little=tp?committed().length/tp:null;
@@ -1379,8 +1500,12 @@ function policyTab(){
  return `${criteriosTab()}<hr style="border:0;border-top:1px solid #e2e8f0;margin:18px 0"/>${classPolicyTable()}<h3 style="margin-top:18px">Políticas explícitas</h3><ol><li>O trabalho só avança se a próxima etapa tiver capacidade.</li><li>O compromisso começa em <b>Pronto para Desenvolvimento</b>.</li><li>Expedites e bugs podem furar WIP, mas geram risco sistêmico.</li><li>Especialistas rendem mais; colaboração reduz filas.</li><li>Débito técnico reduz capacidade e aumenta a chance de incidentes.</li><li>O SLE deve ser calibrado pelos dados, preferencialmente próximo ao P85.</li></ol><p><b>Regra de ouro:</b> pare de começar e comece a terminar.</p>`;
 }
 function rankTab(){
- const rows=lerRanking().sort((a,b)=>b.score-a.score).slice(0,20);
- return `<table class="ranktable"><tr><th>#</th><th>Aluno</th><th>Turma</th><th>Score</th><th>Rank</th><th>Lucro</th></tr>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${r.name}</td><td>${r.class||'—'}</td><td>${r.score}</td><td>${r.rank}</td><td>R$ ${r.profit}k</td></tr>`).join('')}</table>`;
+ const isCloud=cloudConfigured();
+ const rows=isCloud?cloudRanking:lerRanking().sort((a,b)=>b.score-a.score).slice(0,20).map((r,i)=>({position:i+1,player_name:r.name,class_name:r.class,score:r.score,rank_name:r.rank,profit:r.profit,current_day:r.day||DAYS,status:r.status||'completed'}));
+ const head=`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px"><div><b>Ranking ${isCloud?'central da turma':'deste navegador'}</b><br><small style="color:#64748b">${isCloud?'Melhor tentativa por participante; partidas em andamento aparecem com o dia atual.':'Configure o Supabase para reunir todos os alunos.'}</small></div>${isCloud?'<button id="refreshRank" class="ghost">Atualizar ranking</button>':''}</div>`;
+ if(isCloud&&!cloudRankingLoaded)return head+'<div class="nodata">Carregando ranking central…</div>';
+ if(!rows.length)return head+'<div class="nodata">Nenhuma partida registrada ainda.</div>';
+ return head+`<table class="ranktable"><tr><th>#</th><th>Aluno</th><th>Turma</th><th>Dia</th><th>Score</th><th>Rank</th><th>Lucro</th><th>Situação</th></tr>${rows.map((r,i)=>`<tr><td>${r.position||i+1}</td><td>${escapeHtml(r.player_name)}</td><td>${escapeHtml(r.class_name||'—')}</td><td>${r.current_day||'—'}</td><td><b>${Number(r.score)||0}</b></td><td>${escapeHtml(r.rank_name||'—')}</td><td>R$ ${Number(r.profit||0).toFixed(0)}k</td><td>${r.status==='completed'?'✅ final':'🎮 jogando'}</td></tr>`).join('')}</table>`;
 }
 function eventModal(){
  const e=state.event;return `<div class="modal"><div class="dialog"><div class="speech"><div class="portrait">${e.avatar}</div><div class="bubble"><b>${e.person} · ${e.role}</b><h3>${e.title}</h3><p>${e.text}</p>${e.choices.map((c,i)=>`<button class="choice" data-choice="${i}"><b>${c.label}</b><br><small>${c.desc}</small></button>`).join('')}</div></div></div></div>`;
@@ -1568,6 +1693,7 @@ function endDay(){
  if(parados)toast(`${parados} pessoa(s) alocada(s) em item parado — capacidade sendo desperdiçada. Realoque arrastando o avatar.`,'bad');
  state.day++;
  if(state.day>DAYS){state.screen='final';recalcScore();saveRank();render();return}
+ queueCloudSave('in_progress');
  if(Math.random()<.72)state.event=makeEvent();
  state.daily=true;render();
 }
@@ -1784,7 +1910,7 @@ function analysis(){
 }
 function final(){
  const a=analysis(),profit=state.revenue-state.cost;
- return `<div class="container final"><div class="panel"><div class="brand">FLOW<b>LAB</b></div><div class="credit">Jogo criado por <b>Prof. Ari Amaral</b></div><h1>Projeto encerrado</h1><div class="scorebox"><div class="scorecard">Score<br><b>${state.score}</b></div><div class="scorecard">Rank<br><b>${rankName()}</b></div><div class="scorecard">Lucro<br><b>R$ ${profit.toFixed(0)}k</b></div><div class="scorecard">Entregas<br><b>${state.deliveries.length}</b></div><div class="scorecard">P85<br><b>${a.p85==null?'—':a.p85}d</b></div></div>
+ return `<div class="container final"><div class="panel"><div class="brand">FLOW<b>LAB</b></div><div class="credit">Jogo criado por <b>Prof. Ari Amaral</b></div><h1>Projeto encerrado</h1><div class="scorebox"><div class="scorecard">Score<br><b>${state.score}</b></div><div class="scorecard">Rank<br><b>${rankName()}</b></div><div class="scorecard">Lucro<br><b>R$ ${profit.toFixed(0)}k</b></div><div class="scorecard">Entregas<br><b>${state.deliveries.length}</b></div><div class="scorecard">P85<br><b>${a.p85==null?'—':a.p85}d</b></div></div><div class="cvverdict cv-good" style="margin-top:12px">☁️ Sincronização: <b id="cloudFinalStatus">${escapeHtml(cloudState)}</b></div>
  ${(()=>{const pr=predictability(),inS=state.deliveries.filter(d=>d.lt<=state.sle).length,lu=Math.max(0,Math.round(state.revenue-state.cost));
  return `<table class="dtab" style="margin:14px 0"><tr><td colspan="2"><b>Composição do score</b></td></tr>
  <tr><td>Lucro (receita − custo)</td><td><b>${lu}</b></td></tr>
@@ -1902,8 +2028,8 @@ function initDrag(){
  document.addEventListener('touchmove',e=>{if(drag.active)e.preventDefault()},{passive:false});
 }
 function bind(){
- const s=document.getElementById('start');if(s)s.onclick=()=>{const n=document.getElementById('name').value.trim();if(!n)return alert('Informe seu nome.');state.player={name:n,class:document.getElementById('class').value.trim()};state.screen='game';state.event={person:'Rafa',role:'Agile Coach',avatar:'🧑‍🏫',title:'Passagem de bastão',text:'Você assume no dia 4 com fila de teste cheia, um item bloqueado e débito técnico em 4/10. Antes de começar mais coisas, observe o quadro.',choices:[{label:'Assumir o desafio',desc:'Abrir o quadro e diagnosticar o fluxo.',act:()=>log('Assumiu a gestão do fluxo.')} ]};render()};
- document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;render()});
+ const s=document.getElementById('start');if(s)s.onclick=()=>{const n=document.getElementById('name').value.trim(),t=document.getElementById('class').value.trim();if(!n)return alert('Informe seu nome.');if(!t)return alert('Informe a turma. Use o mesmo código compartilhado pelo professor.');state.player={name:n,class:t};cloudSessionId=makeUuid();cloudStartedAt=new Date().toISOString();cloudRanking=[];cloudRankingLoaded=false;setCloudState(cloudConfigured()?'preparando sincronização…':'modo local');state.screen='game';state.event={person:'Rafa',role:'Agile Coach',avatar:'🧑‍🏫',title:'Passagem de bastão',text:'Você assume no dia 4 com fila de teste cheia, um item bloqueado e débito técnico em 4/10. Antes de começar mais coisas, observe o quadro.',choices:[{label:'Assumir o desafio',desc:'Abrir o quadro e diagnosticar o fluxo.',act:()=>log('Assumiu a gestão do fluxo.')} ]};render();queueCloudSave('in_progress')};
+ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;render();if(state.tab==='rank'&&cloudConfigured())loadCloudRanking()});
  document.querySelectorAll('[data-wip]').forEach(b=>b.onclick=()=>{const id=b.dataset.wip,d=+b.dataset.delta;state.wip[id]=Math.max(1,(state.wip[id]||1)+d);render()});
  document.querySelectorAll('[data-card]').forEach(c=>{
   c.onclick=e=>{
@@ -1933,7 +2059,8 @@ function bind(){
  const sm=document.getElementById('sleMinus');if(sm)sm.onclick=()=>{state.sle=Math.max(2,state.sle-1);render()};
  const sp=document.getElementById('slePlus');if(sp)sp.onclick=()=>{state.sle++;render()};
  document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{const c=state.event.choices[+b.dataset.choice];c.act();state.event=null;render()});
- const r=document.getElementById('restart');if(r)r.onclick=()=>location.reload();
+ const rr=document.getElementById('refreshRank');if(rr)rr.onclick=()=>loadCloudRanking();
+ const r=document.getElementById('restart');if(r)r.onclick=()=>{cloudSessionId=null;location.reload()};
 }
 render();
 </script>
